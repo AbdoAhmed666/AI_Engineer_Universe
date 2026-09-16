@@ -1,55 +1,48 @@
-'use client'
+import { SectionContainer, SectionHeading } from "@/components/common";
+import { Reveal } from "@/components/motion";
+import { siteConfig } from "@/lib/constants";
 
-import { motion } from 'framer-motion'
-import { Mail, User, GitBranch } from 'lucide-react'
-import { siteConfig } from '@/lib/constants'
-
-const { social } = siteConfig
+const { social } = siteConfig;
 
 const contacts = [
-  { icon: Mail, label: 'Email', href: `mailto:${social.email}`, display: social.email },
-  { icon: User, label: 'LinkedIn', href: social.linkedin ?? '#', display: 'linkedin.com/in/abdelrhman-ahmed' },
-  { icon: GitBranch, label: 'GitHub', href: social.github ?? '#', display: 'github.com/AbdoAhmed666' },
-]
+  { label: "Email", href: `mailto:${social.email}`, display: social.email, external: false },
+  { label: "LinkedIn", href: social.linkedin ?? "#", display: "linkedin.com/in/abdelrhman-ahmed", external: true },
+  { label: "GitHub", href: social.github ?? "#", display: "github.com/AbdoAhmed666", external: true },
+];
 
 export default function Contact() {
   return (
-    <motion.div
-      id="contact"
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.5 }}
-      className="py-24"
-    >
-      <div className="mx-auto w-full max-w-lg px-4 sm:px-6 lg:px-8 text-center">
-        <p className="text-xs tracking-widest text-ballet-blue mb-4">
-          CONTACT
-        </p>
-        <h2 className="text-3xl font-semibold mb-4">
-          Let's Work Together
-        </h2>
-        <p className="text-muted-foreground text-sm leading-relaxed mb-10">
-          Open to AI engineering roles, freelance projects, and collaborations.
-          If you're building something with LLMs, RAG, or ML — I'd like to hear about it.
-        </p>
+    <SectionContainer id="contact">
+      <SectionHeading
+        section="contact"
+        title="Let’s Work Together"
+        intro="Open to AI engineering roles, freelance projects, and collaborations. If you’re building something with LLMs, RAG, or ML — I’d like to hear about it."
+      />
 
-        <div className="flex flex-col">
+      <Reveal>
+        <ul className="grid border-t border-line md:grid-cols-3">
           {contacts.map((contact) => (
-            <a
+            <li
               key={contact.label}
-              href={contact.href}
-              className="flex items-center gap-3 w-full rounded-lg border border-white/10 bg-slate-900/40 px-5 py-4 mb-3 hover:border-ballet-blue/40 hover:bg-slate-900/60 transition-all duration-200 text-sm text-slate-300 hover:text-ballet-blue"
+              className="border-b border-line md:border-l md:px-6 md:first:border-l-0 md:first:pl-0"
             >
-              <contact.icon size={16} className="text-ballet-blue shrink-0" />
-              <span className="font-medium">{contact.label}</span>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {contact.display}
-              </span>
-            </a>
+              <a
+                href={contact.href}
+                {...(contact.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                className="group flex flex-col gap-1 py-5"
+              >
+                <span className="text-body text-foreground transition-colors group-hover:text-accent">
+                  {contact.label}
+                  {contact.external && <span aria-hidden="true"> ↗</span>}
+                </span>
+                <span className="font-mono text-small break-all text-muted-foreground">
+                  {contact.display}
+                </span>
+              </a>
+            </li>
           ))}
-        </div>
-      </div>
-    </motion.div>
-  )
+        </ul>
+      </Reveal>
+    </SectionContainer>
+  );
 }
