@@ -6,16 +6,6 @@
 
 import type { Easing, HTMLMotionProps } from "framer-motion";
 
-// ─── Loading ─────────────────────────────────────────────────────────────
-
-export type LoadingState = "idle" | "loading" | "loaded";
-
-export interface LoadingContextValue {
-  isLoading: boolean;
-  loadingState: LoadingState;
-  markAsLoaded: () => void;
-}
-
 // ─── Components ──────────────────────────────────────────────────────────
 
 export interface ButtonProps extends HTMLMotionProps<"button"> {

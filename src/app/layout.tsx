@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/providers";
-import { Header, Footer, LoadingScreen, ScrollProgress } from "@/components/layout";
-import { Background, PageTransition } from "@/components/common";
+import { Header, Footer, ScrollProgress } from "@/components/layout";
+import { Background } from "@/components/common";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,11 +55,8 @@ export default function RootLayout({
             style={{ zIndex: 1 }}
           />
           <ScrollProgress />
-          <LoadingScreen />
           <Header />
-          <main className="flex-1">
-            <PageTransition>{children}</PageTransition>
-          </main>
+          <main className="flex-1">{children}</main>
           <Footer />
         </Providers>
       </body>

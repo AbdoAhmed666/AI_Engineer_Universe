@@ -65,7 +65,6 @@ export const zIndex = {
   modal: 1300,
   popover: 1400,
   tooltip: 1500,
-  loading: 9999,
 } as const;
 
 // ─── Color Palette (CSS variable names) ──────────────────────────────────
@@ -94,9 +93,3 @@ export const scrollConfig = {
   container: "smooth-container",
 } as const;
 
-// ─── Loading ─────────────────────────────────────────────────────────────
-
-export const loadingConfig = {
-  minDisplayTime: 1500,
-  fadeOutDuration: 500,
-} as const;

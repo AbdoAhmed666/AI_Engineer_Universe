@@ -1,8 +1,10 @@
 /**
  * Application providers composition.
  *
- * Composes the application's context providers into a single client
- * component so the rest of the app can wrap its tree once.
+ * Wraps the tree in a single client boundary for app-wide configuration.
+ * `MotionConfig` makes every Framer Motion animation respect the user's
+ * `prefers-reduced-motion` setting: transform animations are skipped while
+ * opacity changes remain.
  *
  * @example
  * import { Providers } from "@/providers";
@@ -15,35 +17,22 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { LoadingProvider } from "@/context";
-import type { LoadingProviderProps } from "@/context";
+import { MotionConfig } from "framer-motion";
 
 /**
  * Props for the {@link Providers} component.
  */
-export interface ProvidersProps
-  extends Pick<LoadingProviderProps, "minDisplayTimeMs" | "fadeOutDurationMs"> {
-  /** The application subtree made available to the providers. */
+export interface ProvidersProps {
+  /** The application subtree. */
   children: ReactNode;
 }
 
 /**
  * Composes the application providers around `children`.
  *
- * @param props - The composed provider configuration and children.
+ * @param props - The application subtree.
  * @returns The wrapped application subtree.
  */
-export function Providers({
-  children,
-  minDisplayTimeMs,
-  fadeOutDurationMs,
-}: ProvidersProps): ReactNode {
-  return (
-    <LoadingProvider
-      minDisplayTimeMs={minDisplayTimeMs}
-      fadeOutDurationMs={fadeOutDurationMs}
-    >
-      {children}
-    </LoadingProvider>
-  );
+export function Providers({ children }: ProvidersProps): ReactNode {
+  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }
