@@ -162,10 +162,9 @@ export function Hero({ id = "home" }: HeroProps): React.ReactElement {
   return (
     <SectionContainer
       id={id}
-      spacingClass="relative min-h-screen w-full overflow-hidden pt-12 sm:pt-16 pb-16 sm:pb-24"
-      aria-label="Hero"
-      animated={false}
-      className="relative min-h-[90vh] flex items-center"
+      aria-label="Introduction"
+      divider={false}
+      className="relative flex min-h-[90vh] items-center overflow-hidden py-16 sm:py-24"
     >
       {/* Animated background blur */}
       <AnimatedBackgroundBlur />
@@ -175,7 +174,7 @@ export function Hero({ id = "home" }: HeroProps): React.ReactElement {
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
-                className="relative z-10 mx-auto w-full max-w-6xl px-6 sm:px-8 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center"
+                className="relative z-10 grid grid-cols-1 items-center gap-12 lg:grid-cols-2"
       >
         {/* ── Text Column ── */}
         <div className="flex flex-col items-start">
