@@ -1,73 +1,85 @@
 @import "tailwindcss";
 
 /*
- * Class-based dark mode.
- * The ThemeProvider toggles the `.dark` class on <html>, so the `dark:`
- * variant must respond to that class instead of `prefers-color-scheme`.
+ * Class-based dark variant.
+ * Kept only until the theme system is removed (Phase 1, task 1.2).
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Semantic design tokens.
- * Components reference these via utilities like `bg-background`,
- * `text-muted-foreground`, `border-border`, `ring-ring`, etc.
- * Dark mode is the primary visual experience; light mode remains intentional.
+ * Design tokens — AI Engineer Universe.
+ *
+ * The site is dark-only: one calm blue-black environment, hairline structure,
+ * and a single desaturated steel-blue accent. Components reference these via
+ * utilities such as `bg-surface`, `text-muted-foreground`, `border-line`,
+ * `text-accent`.
+ *
+ * Contrast on --background: foreground ≈ 17:1, muted-foreground ≈ 6.4:1,
+ * accent ≈ 8.7:1, faint ≈ 3.4:1 (metadata / large text only).
  */
 :root {
-  --background: #fafafc;
-  --foreground: #0e0e14;
-  --muted: #f0f0f5;
-  --muted-foreground: #595966;
-  --primary: #4f46e5;
-  --primary-foreground: #ffffff;
-  --secondary: #f0f0f5;
-  --secondary-foreground: #12121a;
-  --accent: #f0f0f5;
-  --accent-foreground: #12121a;
-  --border: #e2e2ea;
-  --input: #e2e2ea;
-  --ring: #4f46e5;
-  /* Secondary accent used for AI-style gradients and glows. */
-  --glow: #0891b2;
-  /* Muted ballet-blue accent — desaturated, elegant blue. */
-  --ballet-blue: #5c7aae;
-}
+  color-scheme: dark;
 
-.dark {
-  --background: #07070c;
-  --foreground: #f3f3f6;
-  --muted: #14141c;
-  --muted-foreground: #9b9ba8;
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --secondary: #14141c;
-  --secondary-foreground: #f3f3f6;
-  --accent: #1b1b25;
-  --accent-foreground: #f3f3f6;
-  --border: #21212c;
-  --input: #21212c;
-  --ring: #818cf8;
-  --glow: #22d3ee;
-  /* Muted ballet-blue accent — desaturated, elegant blue. */
-  --ballet-blue: #6e85b7;
+  /* Surfaces — from page ground up to raised interactive states. */
+  --background: #080a0f;
+  --surface: #0b0f16;
+  --raised: #101620;
+
+  /* Hairlines — the primary structural device instead of glow or glass. */
+  --line: rgb(232 237 242 / 0.08);
+  --line-strong: rgb(232 237 242 / 0.15);
+
+  /* Text. */
+  --foreground: #e8edf2;
+  --muted-foreground: #8c98a5;
+  --faint: #5e6975;
+
+  /* Accent — muted steel-blue. */
+  --accent: #8fafc4;
+  --accent-dim: #7f9fb5;
+  --accent-soft: rgb(143 175 196 / 0.12);
+  --accent-foreground: #080a0f;
+
+  /*
+   * Legacy aliases — keep existing components rendering on the new palette.
+   * Removed as components migrate (tasks 1.7 and 1.8).
+   */
+  --muted: var(--surface);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-foreground);
+  --secondary: var(--raised);
+  --secondary-foreground: var(--foreground);
+  --border: #1a212b;
+  --input: #1a212b;
+  --ring: var(--accent);
+  --ballet-blue: var(--accent);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Legacy aliases (see :root). */
+  --color-muted: var(--muted);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-glow: var(--glow);
   --color-ballet-blue: var(--ballet-blue);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -95,7 +107,7 @@ body {
 }
 
 ::selection {
-  background: color-mix(in oklab, var(--primary) 28%, transparent);
+  background: var(--accent-soft);
   color: var(--foreground);
 }
 
@@ -105,20 +117,12 @@ body {
  */
 @utility bg-grid {
   background-image:
-    linear-gradient(
-      to right,
-      color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
-      transparent 1px
-    );
-  background-size: 56px 56px;
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
 }
 
-/* Radial fade mask for decorative layers (grid, glows). */
+/* Radial fade mask for decorative layers (grid). */
 @utility mask-fade-radial {
   mask-image: radial-gradient(
     ellipse 75% 65% at 50% 35%,
@@ -128,9 +132,8 @@ body {
 }
 
 /*
- * Subtle noise texture overlay for premium depth.
- * Applied as a fixed pseudo-element on the body via the `noise-overlay`
- * utility. The noise is extremely faint so it never competes with content.
+ * Subtle noise texture overlay for depth. Extremely faint so it never
+ * competes with content.
  */
 @utility noise-overlay {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.69' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -139,27 +142,6 @@ body {
   mix-blend-mode: overlay;
 }
 
-/*
- * Glassmorphism helper — a translucent, blurred surface with a subtle
- * border. Used by the AI system card and feature panels.
- */
-@utility glass {
-  background: color-mix(in oklab, var(--background) 65%, transparent);
-  border: 1px solid color-mix(in oklab, var(--border) 40%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-/*
- * AI glow — a soft cyan/teal halo used for active nodes and accents.
- */
-@utility ai-glow {
-  box-shadow: 0 0 20px 4px color-mix(in oklab, var(--glow) 35%, transparent);
-}
-
-/*
- * Reduced-motion guard for decorative animations.
- */
 @media (prefers-reduced-motion: reduce) {
   .noise-overlay {
     display: none;

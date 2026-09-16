@@ -22,9 +22,9 @@ const variantClasses = {
   secondary:
     "bg-secondary text-secondary-foreground hover:bg-secondary/80",
   ghost:
-    "bg-transparent hover:bg-accent hover:text-accent-foreground",
+    "bg-transparent hover:bg-raised hover:text-foreground",
   outline:
-    "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+    "border border-input bg-background hover:bg-raised hover:text-foreground",
 } as const;
 
 /**
