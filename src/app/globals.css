@@ -106,8 +106,8 @@ body {
 }
 
 /*
- * Subtle technical grid texture used by the Background component.
- * Fades out radially so it supports the hero instead of competing with it.
+ * Technical grid texture used by the Background component.
+ * Paired with `mask-fade-radial` so it only frames the top of the page.
  */
 @utility bg-grid {
   background-image:
@@ -119,25 +119,8 @@ body {
 /* Radial fade mask for decorative layers (grid). */
 @utility mask-fade-radial {
   mask-image: radial-gradient(
-    ellipse 75% 65% at 50% 35%,
-    black 25%,
-    transparent 78%
+    ellipse 70% 60% at 70% 40%,
+    black 10%,
+    transparent 75%
   );
-}
-
-/*
- * Subtle noise texture overlay for depth. Extremely faint so it never
- * competes with content.
- */
-@utility noise-overlay {
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.69' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.025;
-  pointer-events: none;
-  mix-blend-mode: overlay;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .noise-overlay {
-    display: none;
-  }
 }

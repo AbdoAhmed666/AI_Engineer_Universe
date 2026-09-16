@@ -45,15 +45,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="relative min-h-full flex flex-col">
         <Providers>
           <Background />
-          {/* Subtle noise texture overlay for premium depth */}
-          <div
-            className="noise-overlay fixed inset-0"
-            aria-hidden="true"
-            style={{ zIndex: 1 }}
-          />
           <ScrollProgress />
           <Header />
           <main className="flex-1">{children}</main>

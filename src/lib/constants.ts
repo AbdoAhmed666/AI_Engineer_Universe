@@ -1,6 +1,6 @@
 /**
  * Application-wide constants.
- * Centralized configuration for breakpoints, colors, timing, and site metadata.
+ * Centralized configuration for site metadata, motion timing, and stacking.
  */
 
 // ─── Site Configuration ──────────────────────────────────────────────────
@@ -23,16 +23,6 @@ export const siteConfig: SiteConfig = {
     email: "abdoibrahim122000@gmail.com",
   },
 };
-
-// ─── Breakpoints ─────────────────────────────────────────────────────────
-
-export const breakpoints = {
-  sm: 640,
-  md: 768,
-  lg: 1024,
-  xl: 1280,
-  "2xl": 1536,
-} as const;
 
 // ─── Animation Durations (ms) ────────────────────────────────────────────
 
@@ -66,30 +56,3 @@ export const zIndex = {
   popover: 1400,
   tooltip: 1500,
 } as const;
-
-// ─── Color Palette (CSS variable names) ──────────────────────────────────
-
-export const colors = {
-  background: "hsl(var(--background))",
-  foreground: "hsl(var(--foreground))",
-  primary: "hsl(var(--primary))",
-  primaryForeground: "hsl(var(--primary-foreground))",
-  secondary: "hsl(var(--secondary))",
-  secondaryForeground: "hsl(var(--secondary-foreground))",
-  accent: "hsl(var(--accent))",
-  accentForeground: "hsl(var(--accent-foreground))",
-  muted: "hsl(var(--muted))",
-  mutedForeground: "hsl(var(--muted-foreground))",
-  border: "hsl(var(--border))",
-  input: "hsl(var(--input))",
-  ring: "hsl(var(--ring))",
-} as const;
-
-// ─── Scroll ──────────────────────────────────────────────────────────────
-
-export const scrollConfig = {
-  duration: 1000,
-  offset: 80,
-  container: "smooth-container",
-} as const;
-
