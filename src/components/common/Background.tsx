@@ -73,7 +73,7 @@ export function Background({
       {/* Subtle technical grid texture */}
       <div
         className={cn(
-          "absolute inset-0 bg-grid opacity-[0.15] dark:opacity-[0.08]",
+          "absolute inset-0 bg-grid opacity-60",
           "mask-fade-radial"
         )}
       />

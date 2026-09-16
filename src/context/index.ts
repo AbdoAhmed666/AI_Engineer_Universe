@@ -5,11 +5,8 @@
  * so they can be imported from a single entry point.
  *
  * @example
- * import { ThemeProvider, LoadingProvider } from "@/context";
+ * import { LoadingProvider } from "@/context";
  */
-
-export { ThemeProvider, ThemeContext } from "./theme-context";
-export type { ThemeProviderProps } from "./theme-context";
 
 export { LoadingProvider, LoadingContext } from "./loading-context";
 export type { LoadingProviderProps } from "./loading-context";

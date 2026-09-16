@@ -1,12 +1,6 @@
 @import "tailwindcss";
 
 /*
- * Class-based dark variant.
- * Kept only until the theme system is removed (Phase 1, task 1.2).
- */
-@custom-variant dark (&:where(.dark, .dark *));
-
-/*
  * Design tokens — AI Engineer Universe.
  *
  * The site is dark-only: one calm blue-black environment, hairline structure,

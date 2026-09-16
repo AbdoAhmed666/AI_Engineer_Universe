@@ -5,11 +5,8 @@
  * single entry point.
  *
  * @example
- * import { Button, ThemeToggle } from "@/components/ui";
+ * import { Button } from "@/components/ui";
  */
 
 export { Button } from "./button";
 export type { ButtonProps } from "@/lib/types";
-
-export { ThemeToggle } from "./theme-toggle";
-export type { ThemeToggleProps } from "./theme-toggle";

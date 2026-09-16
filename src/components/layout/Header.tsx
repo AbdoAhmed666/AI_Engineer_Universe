@@ -2,13 +2,12 @@
  * Site header layout component.
  *
  * A responsive, dark-mode-aware navigation header. Renders the site name
- * (from `siteConfig`), a set of navigation links, and the existing
- * `ThemeToggle` for switching color schemes. The layout collapses to a
+ * (from `siteConfig`) and a set of navigation links. The layout collapses to a
  * simplified, icon-forward arrangement on small screens and expands to a
  * full horizontal nav bar on larger viewports.
  *
- * The component is a client component because it relies on the
- * `ThemeToggle`, which consumes the theme context via the `useTheme` hook.
+ * The component is a client component because it manages the mobile menu
+ * open state.
  *
  * @example
  * import { Header } from "@/components/layout";
@@ -25,7 +24,6 @@ import { motion } from "framer-motion";
 import type { HTMLMotionProps } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { siteConfig, zIndex } from "@/lib/constants";
-import { ThemeToggle } from "@/components/ui";
 import { slideDownVariants } from "@/lib/animations";
 
 /**
@@ -61,7 +59,7 @@ const defaultLinks: NavLink[] = [
 ];
 
 /**
- * Responsive site header with theme toggle.
+ * Responsive site header.
  *
  * @param props - Header configuration and native header attributes.
  * @returns The rendered header element.
@@ -126,10 +124,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(
             ))}
           </nav>
 
-          {/* Actions: theme toggle + mobile menu button */}
           <div className="flex items-center gap-2">
-            <ThemeToggle iconOnly aria-label="Toggle theme" />
-
             {/* Mobile menu toggle */}
             <button
               type="button"
