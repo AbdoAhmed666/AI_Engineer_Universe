@@ -9,4 +9,4 @@
  */
 
 export { Button } from "./button";
-export type { ButtonProps } from "@/lib/types";
+export type { ButtonProps } from "./button";

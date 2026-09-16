@@ -35,8 +35,8 @@
   --accent-foreground: #080a0f;
 
   /*
-   * Legacy aliases — keep existing components rendering on the new palette.
-   * Removed as components migrate (tasks 1.7 and 1.8).
+   * Legacy aliases — only the current Hero still uses these.
+   * Remove them with the Hero rebuild (Phase 2).
    */
   --muted: var(--surface);
   --primary: var(--accent);
@@ -169,6 +169,13 @@ body {
 ::selection {
   background: var(--accent-soft);
   color: var(--foreground);
+}
+
+/* One consistent keyboard focus style for every interactive element. */
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 /*

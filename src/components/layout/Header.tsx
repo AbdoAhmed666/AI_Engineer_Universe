@@ -1,30 +1,26 @@
 /**
- * Site header layout component.
+ * Site header.
  *
- * A responsive, dark-mode-aware navigation header. Renders the site name
- * (from `siteConfig`) and a set of navigation links. The layout collapses to a
- * simplified, icon-forward arrangement on small screens and expands to a
- * full horizontal nav bar on larger viewports.
+ * A quiet sticky navigation bar: a mono name mark, section links and, on
+ * small screens, a disclosure menu. The bar is transparent at the top of
+ * the page and gains a hairline border and a solid backdrop once the page
+ * scrolls. The scroll progress line sits on its bottom edge.
  *
- * The component is a client component because it manages the mobile menu
- * open state.
+ * Client component: it tracks scroll position and the mobile menu state.
  *
  * @example
  * import { Header } from "@/components/layout";
  *
- * export default function Page() {
- *   return <Header />;
- * }
+ * <Header />
  */
 
 "use client";
 
-import { forwardRef, useState } from "react";
-import { motion } from "framer-motion";
-import type { HTMLMotionProps } from "framer-motion";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { siteConfig, zIndex } from "@/lib/constants";
-import { slideDownVariants } from "@/lib/animations";
+import { ScrollProgress } from "./ScrollProgress";
 
 /**
  * A single navigation entry rendered by the {@link Header}.
@@ -32,121 +28,112 @@ import { slideDownVariants } from "@/lib/animations";
 export interface NavLink {
   /** Visible label for the link. */
   label: string;
-  /** URL or in-page anchor the link points to. */
+  /** In-page anchor or URL the link points to. */
   href: string;
 }
 
 /**
  * Props for the {@link Header} component.
  */
-export interface HeaderProps extends HTMLMotionProps<"header"> {
-  /** Optional navigation links. Defaults to a standard portfolio set. */
+export interface HeaderProps {
+  /** Optional navigation links. Defaults to the page sections. */
   links?: NavLink[];
-  /** When true, the header sticks to the top of the viewport. */
-  sticky?: boolean;
+  className?: string;
 }
 
 /**
  * Default navigation links used when no `links` prop is supplied.
  */
 const defaultLinks: NavLink[] = [
-  { label: "Home", href: "/" },
   { label: "About", href: "#about" },
-  { label: "Skills", href: "#skills" },
+  { label: "Stack", href: "#skills" },
   { label: "Projects", href: "#projects" },
   { label: "Experience", href: "#experience" },
   { label: "Contact", href: "#contact" },
 ];
 
+/** Scroll distance (px) after which the header shows its border and backdrop. */
+const SCROLLED_THRESHOLD = 8;
+
 /**
- * Responsive site header.
+ * Responsive sticky site header.
  *
- * @param props - Header configuration and native header attributes.
+ * @param props - Navigation links and optional class name.
  * @returns The rendered header element.
  */
-export const Header = forwardRef<HTMLElement, HeaderProps>(
-  ({ className, links = defaultLinks, sticky = true, ...props }, ref) => {
-    const [isOpen, setIsOpen] = useState(false);
+export function Header({
+  links = defaultLinks,
+  className,
+}: HeaderProps): React.ReactElement {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const { scrollY } = useScroll();
 
-    return (
-      <motion.header
-        ref={ref}
-        role="banner"
-        initial="hidden"
-        animate="visible"
-        variants={slideDownVariants}
-        className={cn(
-          "w-full border-b border-border/40 bg-background/70 backdrop-blur-md",
-          "supports-[backdrop-filter]:bg-background/60",
-          sticky && "sticky top-0",
-          className
-        )}
-        style={{ zIndex: zIndex.sticky }}
-        {...props}
-      >
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          {/* Brand */}
-          <a
-            href="#home"
-            className="text-base font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80 sm:text-lg"
-            aria-label={`${siteConfig.name} — home`}
-          >
-            {siteConfig.name}
-          </a>
+  useMotionValueEvent(scrollY, "change", (value) => {
+    setIsScrolled(value > SCROLLED_THRESHOLD);
+  });
 
-          {/* Desktop navigation */}
-          <nav
-            aria-label="Primary"
-            className="hidden items-center gap-1 md:flex"
-          >
+  // Close the mobile menu with Escape.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen]);
+
+  const isSolid = isScrolled || isOpen;
+
+  return (
+    <header
+      className={cn(
+        "sticky top-0 w-full border-b transition-colors duration-300",
+        isSolid
+          ? "border-line bg-background/85 backdrop-blur-md"
+          : "border-transparent bg-transparent",
+        className
+      )}
+      style={{ zIndex: zIndex.sticky }}
+    >
+      <div className="container-page flex h-16 items-center justify-between gap-6">
+        <a
+          href="#home"
+          className="font-mono text-small text-foreground"
+          aria-label={`${siteConfig.name}, back to top`}
+        >
+          {siteConfig.name}
+          <span className="text-faint"> / AI Engineer</span>
+        </a>
+
+        <nav aria-label="Primary" className="hidden md:block">
+          <ul className="flex items-center gap-8">
             {links.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "group relative rounded-md px-3 py-2 text-sm font-medium",
-                  "text-muted-foreground transition-colors",
-                  "hover:text-foreground focus-visible:outline-none",
-                  "focus-visible:ring-2 focus-visible:ring-ring",
-                  "focus-visible:ring-offset-2"
-                )}
-              >
-                {link.label}
-                <span
-                  className={cn(
-                    "absolute inset-x-0 -bottom-px h-px",
-                    "bg-gradient-to-r from-primary via-transparent to-primary",
-                    "opacity-0 transition-opacity duration-300",
-                    "group-hover:opacity-60"
-                  )}
-                />
-              </a>
+              <li key={link.href}>
+                <a
+                  href={link.href}
+                  className="text-small text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {link.label}
+                </a>
+              </li>
             ))}
-          </nav>
+          </ul>
+        </nav>
 
-          <div className="flex items-center gap-2">
-            {/* Mobile menu toggle */}
-            <button
-              type="button"
-              aria-label={isOpen ? "Close menu" : "Open menu"}
-              aria-expanded={isOpen}
-              aria-controls="header-mobile-nav"
-              onClick={() => setIsOpen((prev) => !prev)}
-              className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-md",
-                "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-                "transition-colors focus-visible:outline-none",
-                "focus-visible:ring-2 focus-visible:ring-ring",
-                "focus-visible:ring-offset-2",
-                "md:hidden"
-              )}
-            >
-              <MenuIcon open={isOpen} />
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          aria-label={isOpen ? "Close menu" : "Open menu"}
+          aria-expanded={isOpen}
+          aria-controls="header-mobile-nav"
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="-mr-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground md:hidden"
+        >
+          <MenuIcon open={isOpen} />
+        </button>
+      </div>
 
-        {/* Mobile navigation panel */}
+      <AnimatePresence initial={false}>
         {isOpen && (
           <motion.nav
             id="header-mobile-nav"
@@ -155,21 +142,15 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="border-t border-border/40 bg-background md:hidden"
+            className="overflow-hidden border-t border-line md:hidden"
           >
-            <ul className="mx-auto flex w-full max-w-7xl flex-col px-4 py-2 sm:px-6">
+            <ul className="container-page flex flex-col py-3">
               {links.map((link) => (
                 <li key={link.href}>
                   <a
                     href={link.href}
                     onClick={() => setIsOpen(false)}
-                    className={cn(
-                      "block rounded-md px-3 py-2 text-sm font-medium",
-                      "text-muted-foreground transition-colors",
-                      "hover:bg-raised hover:text-foreground",
-                      "focus-visible:outline-none focus-visible:ring-2",
-                      "focus-visible:ring-ring focus-visible:ring-offset-2"
-                    )}
+                    className="block py-3 text-body text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {link.label}
                   </a>
@@ -178,17 +159,17 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(
             </ul>
           </motion.nav>
         )}
-      </motion.header>
-    );
-  }
-);
+      </AnimatePresence>
 
-Header.displayName = "Header";
+      <ScrollProgress />
+    </header>
+  );
+}
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
 /**
- * Hamburger / close menu icon. Switches between two glyphs based on `open`.
+ * Two-line menu / close icon. Switches glyph based on `open`.
  */
 function MenuIcon({ open }: { open: boolean }): React.ReactElement {
   return (
@@ -197,9 +178,8 @@ function MenuIcon({ open }: { open: boolean }): React.ReactElement {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={1.5}
       strokeLinecap="round"
-      strokeLinejoin="round"
       aria-hidden="true"
     >
       {open ? (
@@ -209,9 +189,8 @@ function MenuIcon({ open }: { open: boolean }): React.ReactElement {
         </>
       ) : (
         <>
-          <line x1={3} y1={12} x2={21} y2={12} />
-          <line x1={3} y1={6} x2={21} y2={6} />
-          <line x1={3} y1={18} x2={21} y2={18} />
+          <line x1={4} y1={9} x2={20} y2={9} />
+          <line x1={4} y1={15} x2={20} y2={15} />
         </>
       )}
     </svg>
