@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/providers";
 import { Header, Footer } from "@/components/layout";
 import { Background } from "@/components/common";
+import { siteConfig } from "@/lib/constants";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,6 +17,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  /*
+   * Required for the share card to resolve. Without it Next has no origin to
+   * build `og:image` against, so the tag comes out pointing at whatever host
+   * happened to render — `localhost` in a local build — and every preview
+   * silently shows nothing.
+   */
+  metadataBase: new URL(siteConfig.url),
   title: 'Abdelrhman Ahmed — AI Engineer',
   description:
     'AI Engineer specializing in LLMs, RAG systems, agents, and production ML. Based in Alexandria, Egypt.',

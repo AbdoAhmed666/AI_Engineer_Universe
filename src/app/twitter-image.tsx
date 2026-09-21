@@ -25,6 +25,14 @@ import { siteConfig } from "@/lib/constants";
 export const alt =
   "Abdelrhman Ahmed — AI Engineer. The retrieval-augmented architecture behind the work: knowledge, embeddings, index, retrieval, context, generation, evaluation, service, application.";
 
+/*
+ * Stated rather than inferred. These are Route Handlers, and a static export
+ * refuses to build one that has not declared itself static — the card is the
+ * same for every visitor, so saying so costs nothing and makes the export
+ * possible.
+ */
+export const dynamic = "force-static";
+
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

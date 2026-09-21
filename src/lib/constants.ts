@@ -12,7 +12,7 @@ export const siteConfig: SiteConfig = {
   title: "Abdelrhman Ahmed — AI Engineer",
   description:
     "AI Engineer building production-grade systems with LLMs, RAG, agents, and machine learning.",
-  url: "https://ai-engineer-universe.vercel.app",
+  url: "https://abdoahmed666.github.io",
   author: {
     name: "Abdelrhman Ahmed",
     email: "abdoibrahim122000@gmail.com",
