@@ -395,6 +395,10 @@ function Windows({
       mesh.setMatrixAt(index, matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
+    // Same stale-bounds trap as the buildings. Nothing raycasts the
+    // windows, but the cached sphere is what frustum culling reads too.
+    mesh.computeBoundingSphere();
+    mesh.computeBoundingBox();
     paint(mesh, 1);
     invalidate();
   }, [bays, paint, invalidate]);
@@ -499,6 +503,21 @@ function Buildings({
       mesh.setMatrixAt(index, matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
+
+    /*
+     * Recompute the bounds, and not as a precaution.
+     *
+     * An InstancedMesh is constructed with its instance matrices zeroed,
+     * and three derives the bounding volumes from them lazily and then
+     * caches the result. Writing the real matrices afterwards does not
+     * invalidate that cache, so the mesh keeps a degenerate sphere sitting
+     * at the origin — and `InstancedMesh.raycast` tests that sphere before
+     * it tests any instance. Picking then works only for the instances
+     * that happen to fall inside it, which is why the middle building's
+     * lowest floors responded and nothing else in the city did.
+     */
+    mesh.computeBoundingSphere();
+    mesh.computeBoundingBox();
   }, [boxes]);
 
   return (
