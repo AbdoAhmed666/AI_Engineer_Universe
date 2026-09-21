@@ -37,6 +37,7 @@ import {
   type CityLayout,
   type Floor,
   type Kerb,
+  type StageMark,
   type Vec3,
 } from "./city";
 
@@ -111,22 +112,55 @@ const ORBIT = {
   minPolar: 0.1,
   /** Just under the horizon, so the camera can sit at street level. */
   maxPolar: 1.58,
-  target: new THREE.Vector3(0, 1.6, 0),
 } as const;
+
+/**
+ * TRACK: the world opens by pulling back, not by cutting.
+ *
+ * It starts where the Hero left off — close and looking down on the
+ * pipeline, which is the same reading the schematic gives — and then
+ * retreats and drops to street level until the buildings that stand on
+ * those stages are what fills the frame. The visitor is not moved to a
+ * second place; they are moved away from the first one until the larger
+ * thing is visible.
+ *
+ * Under reduced motion the camera starts at the end of that move, because
+ * the destination is the content and the travel is not.
+ */
+const INTRO = {
+  duration: 2.1,
+  from: {
+    azimuth: 0.06,
+    polar: 0.3,
+    radius: 13.5,
+    target: new THREE.Vector3(0, 0, 2.2),
+  },
+  to: {
+    azimuth: 0.44,
+    polar: 1.5,
+    radius: 16.5,
+    target: new THREE.Vector3(0, 1.6, 0),
+  },
+} as const;
+
+/** Ease in and out, so the pull-back starts and settles rather than slides. */
+function easeInOut(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function mix(from: number, to: number, k: number): number {
+  return from + (to - from) * k;
+}
 
 // ─── Ground ──────────────────────────────────────────────────────────────────
 
 /** Kerbs and lane markings, built from the layout's own street. */
 function Road({
   kerbs,
-  centreLine,
   kerbColor,
-  laneColor,
 }: {
   kerbs: readonly Kerb[];
-  centreLine: readonly Kerb[];
   kerbColor: string;
-  laneColor: string;
 }): React.ReactElement {
   const build = (segments: readonly Kerb[]) => {
     const points: number[] = [];
@@ -143,17 +177,11 @@ function Road({
   };
 
   const kerbGeometry = useMemo(() => build(kerbs), [kerbs]);
-  const laneGeometry = useMemo(() => build(centreLine), [centreLine]);
 
   return (
-    <group>
-      <lineSegments geometry={kerbGeometry} raycast={() => null}>
-        <lineBasicMaterial color={kerbColor} transparent opacity={0.75} fog />
-      </lineSegments>
-      <lineSegments geometry={laneGeometry} raycast={() => null}>
-        <lineBasicMaterial color={laneColor} transparent opacity={0.4} fog />
-      </lineSegments>
-    </group>
+    <lineSegments geometry={kerbGeometry} raycast={() => null}>
+      <lineBasicMaterial color={kerbColor} transparent opacity={0.75} fog />
+    </lineSegments>
   );
 }
 
@@ -463,6 +491,108 @@ function FloorHighlight({
   );
 }
 
+/**
+ * The pipeline the city is built on, and what each project draws from it.
+ *
+ * The marks are the same nine stages the Hero renders as a rail — the same
+ * primitive, two scales apart. Inspecting a building lights the stages it
+ * implements and draws the lines to them, which is `Floor.stages` stated
+ * as geometry instead of as a caption.
+ */
+function GroundPipeline({
+  stages,
+  links,
+  palette,
+}: {
+  stages: readonly StageMark[];
+  /** Lines from the inspected building to its stages, if any. */
+  links: readonly Kerb[];
+  palette: Palette;
+}): React.ReactElement {
+  const { invalidate } = useThree();
+
+  const rail = useMemo(() => {
+    const points: number[] = [];
+    for (const stage of stages) {
+      points.push(stage.position[0], stage.position[1], stage.position[2]);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(points, 3)
+    );
+    return geometry;
+  }, [stages]);
+
+  const marks = useMemo(
+    () =>
+      mergedEdges(
+        stages.map((stage) => ({
+          position: [...stage.position] as [number, number, number],
+          size: [stage.width, 0.04, stage.depth] as [number, number, number],
+          accent: false,
+          building: "ai-interview-agent" as ProjectId,
+          floor: null,
+        }))
+      ),
+    [stages]
+  );
+
+  const drawn = useMemo(() => {
+    const points: number[] = [];
+    for (const link of links) {
+      points.push(link.from[0], link.from[1], link.from[2]);
+      points.push(link.to[0], link.to[1], link.to[2]);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(points, 3)
+    );
+    return geometry;
+  }, [links]);
+
+  useEffect(() => invalidate(), [links, invalidate]);
+
+  return (
+    <group>
+      <primitive
+        object={useMemo(
+          () =>
+            new THREE.Line(
+              rail,
+              new THREE.LineBasicMaterial({
+                color: palette.kerb,
+                transparent: true,
+                opacity: 0.8,
+                fog: true,
+              })
+            ),
+          [rail, palette.kerb]
+        )}
+      />
+      <lineSegments geometry={marks} raycast={() => null}>
+        <lineBasicMaterial
+          color={palette.foreground}
+          transparent
+          opacity={0.35}
+          fog
+        />
+      </lineSegments>
+      {links.length > 0 && (
+        <lineSegments geometry={drawn} raycast={() => null}>
+          <lineBasicMaterial
+            color={palette.accent}
+            transparent
+            opacity={0.55}
+            fog
+          />
+        </lineSegments>
+      )}
+    </group>
+  );
+}
+
 /** Every building in the city, as four draw calls. */
 function Buildings({
   layout,
@@ -575,6 +705,8 @@ interface OrbitState {
   azimuth: number;
   polar: number;
   radius: number;
+  /** What the camera is looking at. The intro moves it; dragging does not. */
+  target: THREE.Vector3;
 }
 
 /**
@@ -586,13 +718,19 @@ interface OrbitState {
  */
 function Rig({
   orbit,
+  intro,
   layout,
   labelRefs,
+  stageRefs,
   onReady,
 }: {
   orbit: React.RefObject<OrbitState>;
+  /** Progress of the opening pull-back, 0 to 1. */
+  intro: React.RefObject<{ t: number }>;
   layout: CityLayout;
   labelRefs: React.RefObject<(HTMLElement | null)[]>;
+  /** Stage names on the rail, pinned the same way the building names are. */
+  stageRefs: React.RefObject<(HTMLElement | null)[]>;
   onReady?: () => void;
 }): null {
   const { camera, size, invalidate } = useThree();
@@ -608,6 +746,14 @@ function Rig({
       ),
     [layout]
   );
+  const stageAnchors = useMemo(
+    () =>
+      layout.stages.map(
+        (stage) =>
+          new THREE.Vector3(stage.position[0], 0.18, stage.position[2])
+      ),
+    [layout]
+  );
 
   useEffect(() => {
     if (size.width > 0 && size.height > 0) {
@@ -616,7 +762,7 @@ function Rig({
     }
   }, [size.width, size.height, invalidate, onReady]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     /*
      * Both the camera and the label elements are mutated directly here, and
      * deliberately: they are `three` and DOM objects, and routing a pointer
@@ -626,31 +772,54 @@ function Rig({
      */
     /* eslint-disable react-hooks/immutability */
     const state = orbit.current;
+
+    // The pull-back drives the same orbit state a drag would, so taking
+    // hold of the world mid-move simply continues from wherever it is.
+    if (intro.current.t < 1) {
+      intro.current.t = Math.min(1, intro.current.t + delta / INTRO.duration);
+      const k = easeInOut(intro.current.t);
+      state.azimuth = mix(INTRO.from.azimuth, INTRO.to.azimuth, k);
+      state.polar = mix(INTRO.from.polar, INTRO.to.polar, k);
+      state.radius = mix(INTRO.from.radius, INTRO.to.radius, k);
+      state.target.lerpVectors(INTRO.from.target, INTRO.to.target, k);
+      invalidate();
+    }
+
     const sinPolar = Math.sin(state.polar);
     camera.position.set(
-      ORBIT.target.x + state.radius * sinPolar * Math.sin(state.azimuth),
-      ORBIT.target.y + state.radius * Math.cos(state.polar),
-      ORBIT.target.z + state.radius * sinPolar * Math.cos(state.azimuth)
+      state.target.x + state.radius * sinPolar * Math.sin(state.azimuth),
+      state.target.y + state.radius * Math.cos(state.polar),
+      state.target.z + state.radius * sinPolar * Math.cos(state.azimuth)
     );
-    camera.lookAt(ORBIT.target);
+    camera.lookAt(state.target);
     // `lookAt` leaves `matrixWorldInverse` stale, and that is the matrix
     // `project()` reads. Without this the labels are pinned to where the
     // camera was on the previous frame, which in demand mode is wherever it
     // last stopped.
     camera.updateMatrixWorld();
 
-    const nodes = labelRefs.current;
-    if (!nodes) return;
-    for (let index = 0; index < anchors.length; index += 1) {
-      const node = nodes[index];
-      if (!node) continue;
-      const projected = anchors[index].clone().project(camera);
-      const x = ((projected.x + 1) / 2) * size.width;
-      const y = ((1 - projected.y) / 2) * size.height;
-      const behind = projected.z > 1;
-      node.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
-      node.style.opacity = behind ? "0" : "1";
-    }
+    const pin = (
+      nodes: (HTMLElement | null)[] | null,
+      points: THREE.Vector3[],
+      anchor: string
+    ) => {
+      if (!nodes) return;
+      for (let index = 0; index < points.length; index += 1) {
+        const node = nodes[index];
+        if (!node) continue;
+        const projected = points[index].clone().project(camera);
+        const x = ((projected.x + 1) / 2) * size.width;
+        const y = ((1 - projected.y) / 2) * size.height;
+        node.style.transform = `translate3d(${x}px, ${y}px, 0) ${anchor}`;
+        // `opacity` is owned by React for the stage names, which come and
+        // go; only the building names are hidden from here.
+        if (projected.z > 1) node.style.visibility = "hidden";
+        else node.style.visibility = "visible";
+      }
+    };
+
+    pin(labelRefs.current, anchors, "translate(-50%, -100%)");
+    pin(stageRefs.current, stageAnchors, "translate(-50%, -50%)");
     /* eslint-enable react-hooks/immutability */
   });
 
@@ -706,37 +875,76 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
     return null;
   }, [selected, inspected, picked]);
 
+  /**
+   * The stages named on the rail: those of the open layer if one is open,
+   * otherwise every stage the inspected building implements.
+   */
+  const activeStages = useMemo(() => {
+    if (!building) return new Set<string>();
+    const floors = selected
+      ? building.floors.filter((floor) => floor.id === selected)
+      : building.floors;
+    return new Set(floors.flatMap((floor) => floor.stages));
+  }, [building, selected]);
+
   /** The floor whose detail the panel is showing. */
   const openFloor = useMemo(
     () => building?.floors.find((floor) => floor.id === selected) ?? null,
     [building, selected]
   );
-  const orbit = useRef<OrbitState>({ azimuth: 0.44, polar: 1.50, radius: 16.5 });
+  /*
+   * Reduced motion is answered here rather than by withholding the world:
+   * the city has no motion of its own, so the honest accommodation is to
+   * skip the travel and start at the destination, not to deny the content.
+   * Read at first render, which is safe because this scene is client only.
+   */
+  const settled =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const start = settled ? INTRO.to : INTRO.from;
+  const orbit = useRef<OrbitState>({
+    azimuth: start.azimuth,
+    polar: start.polar,
+    radius: start.radius,
+    target: start.target.clone(),
+  });
+  const intro = useRef({ t: settled ? 1 : 0 });
   const labelRefs = useRef<(HTMLElement | null)[]>([]);
+  const stageRefs = useRef<(HTMLElement | null)[]>([]);
   const dragging = useRef<{ x: number; y: number } | null>(null);
   const invalidateRef = useRef<(() => void) | null>(null);
 
   const nudge = useCallback(() => invalidateRef.current?.(), []);
 
-  const onPointerDown = useCallback((event: React.PointerEvent) => {
-    dragging.current = { x: event.clientX, y: event.clientY };
-    (event.target as Element).setPointerCapture?.(event.pointerId);
+  /** Taking hold of the world ends the opening move wherever it has got to. */
+  const takeOver = useCallback(() => {
+    intro.current.t = 1;
   }, []);
+
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      takeOver();
+      dragging.current = { x: event.clientX, y: event.clientY };
+      (event.target as Element).setPointerCapture?.(event.pointerId);
+    },
+    [takeOver]
+  );
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent) => {
-      const start = dragging.current;
-      if (!start) return;
+      const from = dragging.current;
+      if (!from) return;
+      takeOver();
       const state = orbit.current;
-      state.azimuth -= (event.clientX - start.x) * 0.006;
+      state.azimuth -= (event.clientX - from.x) * 0.006;
       state.polar = Math.min(
         ORBIT.maxPolar,
-        Math.max(ORBIT.minPolar, state.polar - (event.clientY - start.y) * 0.004)
+        Math.max(ORBIT.minPolar, state.polar - (event.clientY - from.y) * 0.004)
       );
       dragging.current = { x: event.clientX, y: event.clientY };
       nudge();
     },
-    [nudge]
+    [nudge, takeOver]
   );
 
   const onPointerUp = useCallback(() => {
@@ -745,6 +953,7 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
 
   const onWheel = useCallback(
     (event: React.WheelEvent) => {
+      takeOver();
       const state = orbit.current;
       state.radius = Math.min(
         ORBIT.maxRadius,
@@ -752,13 +961,14 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
       );
       nudge();
     },
-    [nudge]
+    [nudge, takeOver]
   );
 
   // Arrow keys orbit too, so the world is reachable without a pointer.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = orbit.current;
+      takeOver();
       if (event.key === "ArrowLeft") state.azimuth += 0.09;
       else if (event.key === "ArrowRight") state.azimuth -= 0.09;
       else if (event.key === "ArrowUp")
@@ -771,7 +981,7 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [nudge]);
+  }, [nudge, takeOver]);
 
   return (
     <div
@@ -796,16 +1006,18 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
         <fog attach="fog" args={[palette.background, 26, 130]} />
         <Rig
           orbit={orbit}
+          intro={intro}
           layout={layout}
           labelRefs={labelRefs}
+          stageRefs={stageRefs}
           onReady={onReady}
         />
         <Ground color={palette.line} />
-        <Road
-          kerbs={layout.kerbs}
-          centreLine={layout.centreLine}
-          kerbColor={palette.kerb}
-          laneColor={palette.faint}
+        <Road kerbs={layout.kerbs} kerbColor={palette.kerb} />
+        <GroundPipeline
+          stages={layout.stages}
+          links={inspected ? layout.links[inspected] : []}
+          palette={palette}
         />
         <Buildings
           layout={layout}
@@ -842,7 +1054,10 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
               "pointer-events-auto absolute left-0 top-0 whitespace-nowrap font-mono text-small",
               inspected === item.id ? "text-accent" : "text-foreground"
             )}
-            style={{ opacity: 0 }}
+            // Hidden until the rig has pinned it, so it never flashes at
+            // the top-left corner on the first frame. `visibility` is the
+            // rig's to set from here on; `opacity` stays React's.
+            style={{ visibility: "hidden" }}
             onPointerDown={(event) => event.stopPropagation()}
             // Deliberately no onBlur. Focus moves *into* the panel the
             // moment a layer is chosen, and clearing the building there
@@ -859,6 +1074,32 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
           >
             {item.name}
           </button>
+        ))}
+      </div>
+
+      {/*
+        Stage names on the rail. All nine exist so the rig can pin them
+        without the refs shifting, but only the ones the inspected building
+        actually implements are shown — at rest the street stays quiet, and
+        asking about a building is what makes its part of the system speak.
+      */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        {layout.stages.map((stage, index) => (
+          <span
+            key={stage.id}
+            ref={(node) => {
+              stageRefs.current[index] = node;
+            }}
+            className={cn(
+              "absolute left-0 top-0 whitespace-nowrap font-mono text-[11px] transition-opacity duration-200",
+              activeStages.has(stage.id)
+                ? "text-accent opacity-100"
+                : "opacity-0"
+            )}
+            style={{ visibility: "hidden" }}
+          >
+            {stage.label}
+          </span>
         ))}
       </div>
 

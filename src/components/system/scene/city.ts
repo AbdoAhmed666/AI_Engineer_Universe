@@ -30,6 +30,7 @@ import {
   type BuildingForm,
   type LayerKind,
 } from "@/lib/architecture";
+import { pipeline } from "@/lib/pipeline";
 import { projectNames } from "@/lib/projects";
 import type { ProjectId } from "@/lib/projects";
 
@@ -95,6 +96,22 @@ export interface Building {
   readonly footprint: number;
 }
 
+/**
+ * A pipeline stage, laid into the ground the city is built on.
+ *
+ * The same nine stages the Hero draws as a rail, at city scale and running
+ * behind the buildings rather than through them: the system was there
+ * first and the projects were built on top of it. This is what the zoom
+ * out is zooming out *from*.
+ */
+export interface StageMark {
+  readonly id: string;
+  readonly label: string;
+  readonly position: Vec3;
+  readonly width: number;
+  readonly depth: number;
+}
+
 /** A length of kerb drawn on the ground. */
 export interface Kerb {
   readonly from: Vec3;
@@ -106,10 +123,16 @@ export interface CityLayout {
   readonly buildings: readonly Building[];
   /** Kerb lines of the street the buildings stand on. */
   readonly kerbs: readonly Kerb[];
-  /** Dashes down the middle of the main street. */
-  readonly centreLine: readonly Kerb[];
   /** Half-extent of the ground the buildings occupy. */
   readonly extent: number;
+  /** The pipeline the city stands on. */
+  readonly stages: readonly StageMark[];
+  /**
+   * For each project, a line from its building to every stage it
+   * implements. Derived from `Floor.stages`, so the connection is the
+   * architecture's own claim rather than a drawn decoration.
+   */
+  readonly links: Record<ProjectId, readonly Kerb[]>;
 }
 
 /**
@@ -196,6 +219,9 @@ const GAP = 4.2;
 
 /** Width of the main street. */
 const ROAD_WIDTH = 3.2;
+
+/** Size of a stage marker set into the road. */
+const STAGE_MARK = { width: 0.78, depth: 0.5, lift: 0.02 } as const;
 
 /** Width of a floor, from how many modules its layer has. */
 function floorWidth(layer: ArchitectureLayer, form: BuildingForm): number {
@@ -330,11 +356,37 @@ export function getCityLayout(): CityLayout {
     );
   }
 
-  const centreZ = (roadNear + roadFar) / 2;
-  const centreLine: Kerb[] = [];
-  for (let x = runFrom; x < runTo; x += 1.6) {
-    centreLine.push({ from: [x, 0, centreZ], to: [x + 0.8, 0, centreZ] });
+  /*
+   * The pipeline runs down the middle of the street, where dashed lane
+   * markings used to be. Those dashes were the one thing on the ground
+   * that stood for nothing; the stages that replace them are the same nine
+   * the Hero draws, and the street the buildings face is now the system
+   * they were built on. It is also the only place a stage stays visible
+   * from street level, which is where the camera ends up.
+   */
+  const railZ = (roadNear + roadFar) / 2;
+  const railSpan = totalWidth + 2;
+  const railStep = railSpan / Math.max(pipeline.stages.length - 1, 1);
+  const stages: StageMark[] = pipeline.stages.map((stage, index) => ({
+    id: stage.id,
+    label: stage.label,
+    position: [-railSpan / 2 + index * railStep, STAGE_MARK.lift, railZ],
+    width: STAGE_MARK.width,
+    depth: STAGE_MARK.depth,
+  }));
+
+  // One line per stage a building actually implements, taken from its own
+  // floors. A project with no pipeline stages — the gesture system — draws
+  // none, and the empty ground behind it is the honest answer.
+  const links = {} as Record<ProjectId, readonly Kerb[]>;
+  for (const building of buildings) {
+    const used = new Set(building.floors.flatMap((floor) => floor.stages));
+    const front = Math.max(...building.floors.map((floor) => floor.depth)) / 2;
+    const from: Vec3 = [building.origin[0], STAGE_MARK.lift, front];
+    links[building.id] = stages
+      .filter((stage) => used.has(stage.id))
+      .map((stage) => ({ from, to: stage.position }));
   }
 
-  return { buildings, kerbs, centreLine, extent: totalWidth / 2 };
+  return { buildings, kerbs, extent: totalWidth / 2, stages, links };
 }
