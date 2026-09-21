@@ -12,8 +12,11 @@
  * transform only. The single client boundary is `BootInView`, which holds
  * the schematic's BOOT until the band is on screen.
  *
- * The schematic band is the slot the future 3D Signal Path scene will
- * occupy; both read the same pipeline data from `@/lib/pipeline`.
+ * The schematic band carries both renderings of the same pipeline data:
+ * the SVG schematic always, and the 3D Signal Path drawn over it wherever
+ * the device can actually run it. `SystemVisualization` owns that decision
+ * and the schematic never leaves the DOM, so the band degrades to exactly
+ * what it is today whenever the scene cannot or should not run.
  *
  * @example
  * import { Hero } from "@/sections";
@@ -26,7 +29,11 @@
 import Image from "next/image";
 import { SectionContainer } from "@/components/common";
 import { BootInView } from "@/components/motion";
-import { SystemSchematic, WorldOverlay } from "@/components/system";
+import {
+  SystemSchematic,
+  SystemVisualization,
+  WorldOverlay,
+} from "@/components/system";
 import { Button } from "@/components/ui";
 import { siteConfig } from "@/lib/constants";
 import { bootSequence, heroDelay, motionVars } from "@/lib/animations";
@@ -202,7 +209,17 @@ export function Hero({ id = "home" }: HeroProps): React.ReactElement {
           }
         />
         <BootInView>
-          <SystemSchematic className="pt-10 sm:pt-12" />
+          {/*
+            `SystemVisualization` sits inside the BOOT gate rather than
+            around it: the gate belongs to the band's place in the page,
+            while the scene belongs to the drawing it is laid over. Both
+            locate that drawing through the same `[data-boot-anchor]`, and
+            the wrapper's `position: relative` makes it the offset parent
+            the overlay is measured against.
+          */}
+          <SystemVisualization>
+            <SystemSchematic className="pt-10 sm:pt-12" />
+          </SystemVisualization>
         </BootInView>
       </div>
     </SectionContainer>
