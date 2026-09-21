@@ -1106,7 +1106,10 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
       {building && (
         <div
           id={panelId}
-          className="pointer-events-auto absolute bottom-20 left-6 w-[min(25rem,calc(100%-3rem))] rounded-md border border-line-strong bg-surface p-5 sm:left-8"
+          // Right-hand side: the pipeline runs off to the left of the
+          // default view, and a panel sitting over it hid the very stages
+          // it was naming.
+          className="pointer-events-auto absolute bottom-20 right-6 w-[min(25rem,calc(100%-3rem))] rounded-md border border-line-strong bg-surface p-5 sm:right-8"
         >
           {openFloor ? (
             /*
