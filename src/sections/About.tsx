@@ -1,7 +1,7 @@
-import Image from "next/image";
 import { Brain, Database, Bot, Layers } from "lucide-react";
 import { SectionContainer, SectionHeading } from "@/components/common";
 import { Reveal } from "@/components/motion";
+import { motionSeconds } from "@/lib/animations";
 
 const highlights = [
   { icon: Brain, title: "LLMs", desc: "GPT-4, Claude, Gemini, open-source models" },
@@ -20,15 +20,6 @@ export default function About() {
 
       <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-24">
         <Reveal>
-          <div className="relative mb-8 h-24 w-24 overflow-hidden rounded-xl border border-line">
-            <Image
-              src="/me.jpg"
-              alt="Abdelrhman Ahmed"
-              fill
-              sizes="96px"
-              className="object-cover object-top"
-            />
-          </div>
           <p className="mb-4 text-body text-muted-foreground">
             I’m an AI Engineer specializing in end-to-end AI applications — from LLM pipelines
             and RAG systems to deep learning models and scalable backends. My work spans
@@ -45,7 +36,10 @@ export default function About() {
           </p>
         </Reveal>
 
-        <Reveal delay={0.1} className="grid grid-cols-1 content-start gap-3 sm:grid-cols-2">
+        <Reveal
+          delay={motionSeconds.stagger}
+          className="grid grid-cols-1 content-start gap-3 sm:grid-cols-2"
+        >
           {highlights.map((item) => (
             <div
               key={item.title}

@@ -1,9 +1,17 @@
 import { SectionContainer, SectionHeading } from "@/components/common";
 import { Reveal } from "@/components/motion";
+import { projectNames, type ProjectId } from "@/lib/projects";
 
-const projects = [
+const projects: {
+  id: ProjectId;
+  tag: string;
+  description: string;
+  capabilities: string[];
+  tech: string[];
+  github: string;
+}[] = [
   {
-    name: "AI Interview Agent",
+    id: "ai-interview-agent",
     tag: "Full-Stack AI Application",
     description:
       "Production-grade AI technical interview platform using LLMs and RAG. Generates role-specific adaptive questions, evaluates answers with structured LLM scoring, and produces personalized feedback with hiring recommendations.",
@@ -19,7 +27,7 @@ const projects = [
     github: "https://github.com/AbdoAhmed666/AI-Interview-Agent",
   },
   {
-    name: "AI Internal Knowledge Assistant",
+    id: "ai-internal-knowledge-assistant",
     tag: "RAG · LLM Infrastructure",
     description:
       "Internal knowledge assistant using RAG, embeddings, and FAISS retrieval to generate context-aware responses from a domain knowledge base. Optimized for CPU inference through INT8 quantization — reducing model size by 58.9% (293MB → 120MB).",
@@ -35,7 +43,7 @@ const projects = [
     github: "https://github.com/AbdoAhmed666/electro-pi-ai-internal-knowledge-assistant",
   },
   {
-    name: "Real-Time Gesture Smart Home",
+    id: "gesture-smart-home",
     tag: "Graduation Project · Deep Learning · IoT",
     description:
       "Real-time gesture recognition system using a Bidirectional LSTM and wearable IMU sensors for accessibility-focused smart-home control. Achieved 98% recognition accuracy with 35% latency reduction.",
@@ -59,12 +67,12 @@ export default function Projects() {
 
       <div className="flex flex-col gap-6">
         {projects.map((project) => (
-          <Reveal key={project.name}>
+          <Reveal key={project.id}>
             <article className="rounded-xl border border-line bg-surface p-6 sm:p-10">
               <div className="grid gap-10 lg:grid-cols-[1fr_280px]">
                 <div>
                   <p className="eyebrow mb-3">{project.tag}</p>
-                  <h3 className="text-h3 text-foreground">{project.name}</h3>
+                  <h3 className="text-h3 text-foreground">{projectNames[project.id]}</h3>
                   <p className="mt-4 max-w-[62ch] text-body text-muted-foreground">
                     {project.description}
                   </p>

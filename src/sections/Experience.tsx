@@ -53,29 +53,29 @@ export default function Experience() {
 
       <ol>
         {experiences.map((exp) => (
-          <li
-            key={exp.role}
-            className="grid gap-x-12 gap-y-2 border-t border-line py-8 last:border-b md:grid-cols-[3fr_7fr]"
-          >
-            <p className="font-mono text-small text-muted-foreground tabular-nums">{exp.period}</p>
-            <Reveal>
-              <h3 className="text-h3 text-foreground">{exp.role}</h3>
-              <p className="mt-1 text-small text-accent">{exp.company}</p>
-              <ul className="mt-4 space-y-2">
-                {exp.bullets.map((bullet) => (
-                  <li key={bullet} className="flex items-start gap-3 text-small text-muted-foreground">
-                    <span className="font-mono text-faint" aria-hidden="true">
-                      —
-                    </span>
-                    {bullet}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-4 flex flex-wrap gap-x-4 gap-y-1 font-mono text-label text-faint">
-                {exp.tech.map((tech) => (
-                  <span key={tech}>{tech}</span>
-                ))}
-              </p>
+          <li key={exp.role} className="border-t border-line py-8 last:border-b">
+            {/* One reveal per entry: the period moves with its own row. */}
+            <Reveal className="grid gap-x-12 gap-y-2 md:grid-cols-[3fr_7fr]">
+              <p className="font-mono text-small text-muted-foreground tabular-nums">{exp.period}</p>
+              <div>
+                <h3 className="text-h3 text-foreground">{exp.role}</h3>
+                <p className="mt-1 text-small text-accent">{exp.company}</p>
+                <ul className="mt-4 space-y-2">
+                  {exp.bullets.map((bullet) => (
+                    <li key={bullet} className="flex items-start gap-3 text-small text-muted-foreground">
+                      <span className="font-mono text-faint" aria-hidden="true">
+                        —
+                      </span>
+                      {bullet}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-4 flex flex-wrap gap-x-4 gap-y-1 font-mono text-label text-faint">
+                  {exp.tech.map((tech) => (
+                    <span key={tech}>{tech}</span>
+                  ))}
+                </p>
+              </div>
             </Reveal>
           </li>
         ))}
