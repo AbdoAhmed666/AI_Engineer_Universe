@@ -112,6 +112,7 @@ export function WorldOverlay({
   const [ready, setReady] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
   const close = useCallback(() => {
@@ -120,26 +121,77 @@ export function WorldOverlay({
     triggerRef.current?.focus();
   }, []);
 
-  // While the world is open: Escape closes it, and the page behind cannot
-  // scroll away underneath.
+  /**
+   * While the world is open: Escape closes it, the page behind cannot
+   * scroll away underneath, and neither the keyboard nor a screen reader
+   * can wander out into it.
+   *
+   * The world holds real controls now — a button per building — so a
+   * dialog that merely looked modal is no longer good enough. Everything
+   * else at body level is marked `inert`, which takes it out of the
+   * tab order and out of the accessibility tree in one move, and Tab is
+   * wrapped at both ends so focus cycles inside the dialog rather than
+   * escaping into browser chrome.
+   */
   useEffect(() => {
     if (!open) return;
+
+    const dialog = dialogRef.current;
+
+    /** Everything focusable inside the dialog, in tab order. */
+    const focusable = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         close();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+
+      const stops = focusable();
+      if (stops.length === 0) return;
+
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener("keydown", onKeyDown);
 
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+
+    // The portal is a child of body, so the page behind is the rest of
+    // body's children. Anything already inert is left alone, and only what
+    // this opened is put back.
+    const silenced: HTMLElement[] = [];
+    for (const child of Array.from(document.body.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (child === dialog || child.contains(dialog)) continue;
+      if (child.hasAttribute("inert")) continue;
+      child.setAttribute("inert", "");
+      silenced.push(child);
+    }
+
     closeRef.current?.focus();
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previous;
+      for (const element of silenced) element.removeAttribute("inert");
     };
   }, [open, close]);
 
@@ -177,6 +229,7 @@ export function WorldOverlay({
       {open &&
         createPortal(
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}

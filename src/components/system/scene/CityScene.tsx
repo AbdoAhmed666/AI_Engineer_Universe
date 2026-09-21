@@ -18,13 +18,24 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { cn } from "@/lib/utils";
+import { pipeline } from "@/lib/pipeline";
+import type { ProjectId } from "@/lib/projects";
 import {
   getCityLayout,
   type Building,
   type CityLayout,
+  type Floor,
   type Kerb,
 } from "./city";
 
@@ -66,6 +77,16 @@ function readPalette(): Palette {
     window: token("--accent", "#8fafc4"),
     kerb: "#35414f",
   };
+}
+
+/**
+ * A pipeline stage's display label, from its id.
+ *
+ * Read from the same `pipeline` the Hero's rail is drawn from, so a floor
+ * and the stage it implements can never end up named differently.
+ */
+function stageLabel(id: string): string {
+  return pipeline.stages.find((stage) => stage.id === id)?.label ?? id;
 }
 
 /** Camera limits, so the world can be explored but never broken. */
@@ -153,11 +174,20 @@ function Ground({ color }: { color: string }): React.ReactElement {
 
 // ─── Buildings ───────────────────────────────────────────────────────────────
 
-/** One box to be instanced: a floor or a plinth. */
+/**
+ * One box to be instanced: a floor or a plinth.
+ *
+ * Each one remembers what it was generated from, so a pick can be traced
+ * straight back to the architecture it came from. The instanced mesh hands
+ * back an index; this is what that index means.
+ */
 interface Box {
   position: [number, number, number];
   size: [number, number, number];
   accent: boolean;
+  building: ProjectId;
+  /** The floor this box is, or null when it is the deployment plinth. */
+  floor: Floor | null;
 }
 
 /** Flattens the city into boxes, keeping AI floors separate for the accent. */
@@ -177,6 +207,8 @@ function collectBoxes(buildings: readonly Building[]): Box[] {
           building.plinth.depth,
         ],
         accent: false,
+        building: building.id,
+        floor: null,
       });
     }
     for (const floor of building.floors) {
@@ -184,6 +216,8 @@ function collectBoxes(buildings: readonly Building[]): Box[] {
         position: [...floor.position] as [number, number, number],
         size: [floor.width, floor.height, floor.depth],
         accent: floor.kind === "ai",
+        building: building.id,
+        floor,
       });
     }
   }
@@ -258,13 +292,51 @@ function Windows({
   );
 }
 
+/**
+ * FOCUS, in the city: the inspected floor outlined in the accent.
+ *
+ * A unit box scaled to the floor, rather than a second merged outline set.
+ * One draw call, and only while a floor is actually being looked at.
+ */
+function FloorHighlight({
+  box,
+  color,
+}: {
+  box: Box | null;
+  color: string;
+}): React.ReactElement | null {
+  const { invalidate } = useThree();
+  const geometry = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+    []
+  );
+
+  useEffect(() => invalidate(), [box, invalidate]);
+
+  if (!box) return null;
+
+  return (
+    <lineSegments
+      geometry={geometry}
+      position={box.position}
+      scale={box.size}
+      raycast={() => null}
+    >
+      <lineBasicMaterial color={color} fog={false} />
+    </lineSegments>
+  );
+}
+
 /** Every building in the city, as four draw calls. */
 function Buildings({
   layout,
   palette,
+  onPick,
 }: {
   layout: CityLayout;
   palette: Palette;
+  /** Called with the box under the pointer, or null when it leaves. */
+  onPick: (box: Box | null) => void;
 }): React.ReactElement {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const boxes = useMemo(() => collectBoxes(layout.buildings), [layout]);
@@ -296,10 +368,25 @@ function Buildings({
 
   return (
     <group>
+      {/*
+        The one object in the city that can be hit. Picking here is done by
+        raycasting rather than by DOM boxes over the canvas, which is the
+        opposite of the Hero's choice and for a concrete reason: the camera
+        orbits and the buildings occlude each other, so a screen rectangle
+        would happily report a floor that is standing behind another
+        building. A ray does not. The cost is one raycast per pointer move
+        against a single instanced mesh, because every other object in the
+        scene opts out.
+      */}
       <instancedMesh
         ref={meshRef}
         args={[undefined, undefined, boxes.length]}
-        raycast={() => null}
+        onPointerMove={(event) => {
+          event.stopPropagation();
+          const index = event.instanceId;
+          onPick(index === undefined ? null : (boxes[index] ?? null));
+        }}
+        onPointerOut={() => onPick(null)}
       >
         <boxGeometry args={[1, 1, 1]} />
         <meshBasicMaterial color={palette.mass} fog />
@@ -422,6 +509,22 @@ function Rig({
 export default function CityScene({ onReady }: CitySceneProps): React.ReactElement {
   const layout = useMemo(() => getCityLayout(), []);
   const palette = useMemo(() => readPalette(), []);
+  // What the pointer is over, and what the panel is describing. They are
+  // separate because a building stays inspected while the keyboard holds
+  // it, even though no floor is under the pointer.
+  const [picked, setPicked] = useState<Box | null>(null);
+  const [inspected, setInspected] = useState<ProjectId | null>(null);
+  const panelId = useId();
+
+  const building = useMemo(
+    () => layout.buildings.find((item) => item.id === inspected) ?? null,
+    [layout, inspected]
+  );
+
+  const onPick = useCallback((box: Box | null) => {
+    setPicked(box);
+    if (box) setInspected(box.building);
+  }, []);
   const orbit = useRef<OrbitState>({ azimuth: 0.44, polar: 1.50, radius: 16.5 });
   const labelRefs = useRef<(HTMLElement | null)[]>([]);
   const dragging = useRef<{ x: number; y: number } | null>(null);
@@ -518,7 +621,11 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
           kerbColor={palette.kerb}
           laneColor={palette.faint}
         />
-        <Buildings layout={layout} palette={palette} />
+        <Buildings layout={layout} palette={palette} onPick={onPick} />
+        <FloorHighlight
+          box={picked?.building === inspected ? picked : null}
+          color={palette.accent}
+        />
         <Windows layout={layout} color={palette.window} />
       </Canvas>
 
@@ -528,20 +635,84 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
         project cards below the fold carry the same information, so these
         are hidden from assistive technology.
       */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        {layout.buildings.map((building, index) => (
-          <span
-            key={building.id}
+      <div className="pointer-events-none absolute inset-0">
+        {layout.buildings.map((item, index) => (
+          <button
+            key={item.id}
+            type="button"
             ref={(node) => {
               labelRefs.current[index] = node;
             }}
-            className="absolute left-0 top-0 whitespace-nowrap font-mono text-small text-foreground"
+            aria-describedby={inspected === item.id ? panelId : undefined}
+            // The rig pins these to their buildings every frame, so the
+            // name is also the handle: pointing at a floor inspects the
+            // building, and so does tabbing to its name.
+            className={cn(
+              "pointer-events-auto absolute left-0 top-0 whitespace-nowrap font-mono text-small",
+              inspected === item.id ? "text-accent" : "text-foreground"
+            )}
             style={{ opacity: 0 }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onFocus={() => setInspected(item.id)}
+            onBlur={() =>
+              setInspected((current) => (current === item.id ? null : current))
+            }
           >
-            {building.name}
-          </span>
+            {item.name}
+          </button>
         ))}
       </div>
+
+      {building && (
+        <div
+          id={panelId}
+          className="pointer-events-none absolute bottom-20 left-6 w-[min(24rem,calc(100%-3rem))] rounded-md border border-line-strong bg-surface p-5 sm:left-8"
+        >
+          <p className="eyebrow text-accent">{building.name}</p>
+          {building.plinth && (
+            <p className="mt-1 text-[11px] text-faint">
+              {`Deployed on ${building.plinth.labels.join(", ")}`}
+            </p>
+          )}
+
+          {/*
+            Floors top down, the way the building is read rather than the
+            way it is stacked. Each one names its parts and the pipeline
+            stages it implements — the same stages the Hero's rail draws,
+            which is the whole point: the building is where they landed.
+          */}
+          <ul className="mt-4 flex flex-col-reverse gap-3">
+            {building.floors.map((floor) => (
+              <li
+                key={floor.id}
+                className={cn(
+                  "border-l pl-3",
+                  picked?.floor?.id === floor.id && picked.building === building.id
+                    ? "border-accent"
+                    : "border-line"
+                )}
+              >
+                <p
+                  className={cn(
+                    "font-mono text-[11px]",
+                    floor.kind === "ai" ? "text-accent" : "text-foreground"
+                  )}
+                >
+                  {floor.label}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                  {floor.modules.join(" · ")}
+                </p>
+                {floor.stages.length > 0 && (
+                  <p className="mt-0.5 text-[11px] text-faint">
+                    {`Implements ${floor.stages.map(stageLabel).join(", ")}`}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
