@@ -135,12 +135,18 @@ const INTRO = {
     radius: 13.5,
     target: new THREE.Vector3(0, 0, 2.2),
   },
-  to: {
+  /*
+   * Where the pull-back lands. Derived from the city rather than fixed, so
+   * a project that documents another layer does not grow out of the top of
+   * the frame — which is exactly what happened when the graduation project
+   * went from three layers to five.
+   */
+  to: (tallest: number) => ({
     azimuth: 0.44,
     polar: 1.5,
-    radius: 16.5,
-    target: new THREE.Vector3(0, 1.6, 0),
-  },
+    radius: 12.4 + tallest,
+    target: new THREE.Vector3(0, tallest * 0.45, 0),
+  }),
 } as const;
 
 /** Ease in and out, so the pull-back starts and settles rather than slides. */
@@ -719,6 +725,7 @@ interface OrbitState {
 function Rig({
   orbit,
   intro,
+  resting,
   layout,
   labelRefs,
   stageRefs,
@@ -727,6 +734,8 @@ function Rig({
   orbit: React.RefObject<OrbitState>;
   /** Progress of the opening pull-back, 0 to 1. */
   intro: React.RefObject<{ t: number }>;
+  /** Where the pull-back lands, sized to the tallest building. */
+  resting: ReturnType<(typeof INTRO)["to"]>;
   layout: CityLayout;
   labelRefs: React.RefObject<(HTMLElement | null)[]>;
   /** Stage names on the rail, pinned the same way the building names are. */
@@ -778,10 +787,10 @@ function Rig({
     if (intro.current.t < 1) {
       intro.current.t = Math.min(1, intro.current.t + delta / INTRO.duration);
       const k = easeInOut(intro.current.t);
-      state.azimuth = mix(INTRO.from.azimuth, INTRO.to.azimuth, k);
-      state.polar = mix(INTRO.from.polar, INTRO.to.polar, k);
-      state.radius = mix(INTRO.from.radius, INTRO.to.radius, k);
-      state.target.lerpVectors(INTRO.from.target, INTRO.to.target, k);
+      state.azimuth = mix(INTRO.from.azimuth, resting.azimuth, k);
+      state.polar = mix(INTRO.from.polar, resting.polar, k);
+      state.radius = mix(INTRO.from.radius, resting.radius, k);
+      state.target.lerpVectors(INTRO.from.target, resting.target, k);
       invalidate();
     }
 
@@ -901,7 +910,11 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
   const settled =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const start = settled ? INTRO.to : INTRO.from;
+  const resting = useMemo(
+    () => INTRO.to(Math.max(...layout.buildings.map((b) => b.height))),
+    [layout]
+  );
+  const start = settled ? resting : INTRO.from;
   const orbit = useRef<OrbitState>({
     azimuth: start.azimuth,
     polar: start.polar,
@@ -1007,6 +1020,7 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
         <Rig
           orbit={orbit}
           intro={intro}
+          resting={resting}
           layout={layout}
           labelRefs={labelRefs}
           stageRefs={stageRefs}

@@ -8,9 +8,9 @@
  * another — the geometry *is* the architecture.
  *
  * Content rule, enforceable by reading this file: every module carries the
- * `source` line it came from in `src/sections/Projects.tsx`. If a layer cannot
- * be traced to something the project already claims, it does not exist here.
- * The gesture project has no interface layer for exactly that reason.
+ * `source` line it came from in `src/sections/Projects.tsx`. If a layer
+ * cannot be traced to something the project already claims, it does not
+ * exist here — and when the claims grow, the building grows with them.
  *
  * @example
  * import { architectures } from "@/lib/architecture";
@@ -73,12 +73,21 @@ export interface ProjectArchitecture {
 /**
  * The three featured projects, derived only from what they already document.
  *
- * Forms are not chosen for variety. The interview agent documents five
- * distinct stacked layers, so it is a tower. The knowledge assistant names
- * its own layers — "Modular RAG architecture: retrieval, generation,
- * application layers" — and concentrates its mass in processing, so it is a
- * facility. The gesture system is a model with sensors and devices rather
- * than a stack, so it is a control structure.
+ * Forms are not chosen for variety, and two of them have changed as the
+ * projects were read more carefully rather than to make the skyline more
+ * interesting.
+ *
+ * The interview agent documents four distinct stacked layers — data, AI,
+ * service, interface — so it is a tower. The knowledge assistant names its
+ * own layers, "Modular RAG architecture: retrieval, generation, application
+ * layers", and concentrates its mass in processing, so it is a facility.
+ *
+ * The gesture system was a control structure here for as long as this file
+ * described it as a model with sensors attached. Its repositories document
+ * five stacked layers — an ESP32 bridge, a cleaned 300k-sample dataset, two
+ * model families, a WebSocket service with a realtime database, and a React
+ * client — which is a full stack and therefore a tower. It is the tallest
+ * building in the city because it is the project with the most layers.
  */
 export const architectures: Record<ProjectId, ProjectArchitecture> = {
   "ai-interview-agent": {
@@ -245,17 +254,50 @@ export const architectures: Record<ProjectId, ProjectArchitecture> = {
 
   "gesture-smart-home": {
     id: "gesture-smart-home",
-    form: "control",
+    form: "tower",
     layers: [
       {
-        id: "data",
+        id: "sensors",
         label: "Sensors",
         kind: "data",
         stages: [],
         modules: [
           {
-            label: "IMU streams",
+            label: "ESP32 bridge",
+            source:
+              "ESP32 bridge streaming six-axis IMU data over WebSocket, with IP registration and auto-reconnect",
+          },
+          {
+            label: "IMU stream",
             source: "98% gesture recognition accuracy with BiLSTM + IMU sensors",
+          },
+        ],
+      },
+      {
+        id: "data",
+        label: "Data",
+        kind: "data",
+        stages: [],
+        modules: [
+          {
+            label: "300k motion samples",
+            source:
+              "300,000-sample motion dataset: median-filter cleaning, standard-scaler normalization, feature extraction",
+          },
+          {
+            label: "Cleaning",
+            source:
+              "300,000-sample motion dataset: median-filter cleaning, standard-scaler normalization, feature extraction",
+          },
+          {
+            label: "Normalization",
+            source:
+              "300,000-sample motion dataset: median-filter cleaning, standard-scaler normalization, feature extraction",
+          },
+          {
+            label: "Feature extraction",
+            source:
+              "300,000-sample motion dataset: median-filter cleaning, standard-scaler normalization, feature extraction",
           },
         ],
       },
@@ -270,8 +312,14 @@ export const architectures: Record<ProjectId, ProjectArchitecture> = {
             source: "98% gesture recognition accuracy with BiLSTM + IMU sensors",
           },
           {
-            label: "Training pipeline",
-            source: "TensorFlow/Keras training pipeline with IoT integration",
+            label: "Random Forest",
+            source:
+              "Two model families for fixed and animated gestures: Keras LSTM and Random Forest, with their own encoders and scalers",
+          },
+          {
+            label: "Encoders and scalers",
+            source:
+              "Two model families for fixed and animated gestures: Keras LSTM and Random Forest, with their own encoders and scalers",
           },
           {
             label: "Latency optimization",
@@ -281,17 +329,47 @@ export const architectures: Record<ProjectId, ProjectArchitecture> = {
       },
       {
         id: "service",
-        label: "Control",
+        label: "Service",
         kind: "service",
         stages: [],
         modules: [
           {
-            label: "Real-time control",
+            label: "WebSocket inference",
+            source:
+              "WebSocket inference service with Firebase Realtime Database and prediction logging",
+          },
+          {
+            label: "Firebase realtime DB",
+            source:
+              "WebSocket inference service with Firebase Realtime Database and prediction logging",
+          },
+          {
+            label: "Prediction log",
+            source:
+              "WebSocket inference service with Firebase Realtime Database and prediction logging",
+          },
+          {
+            label: "Home control",
             source: "Real-time smart-home control for accessibility use cases",
           },
         ],
       },
-      // No interface layer: the project documents none, and the building says so.
+      {
+        id: "interface",
+        label: "Client",
+        kind: "interface",
+        stages: [],
+        modules: [
+          {
+            label: "React client",
+            source: "React client showing live prediction and confidence",
+          },
+          {
+            label: "Live confidence",
+            source: "React client showing live prediction and confidence",
+          },
+        ],
+      },
     ],
   },
 };
@@ -303,7 +381,7 @@ export const architectures: Record<ProjectId, ProjectArchitecture> = {
 export const deployments: Record<ProjectId, readonly string[]> = {
   "ai-interview-agent": ["Docker"],
   "ai-internal-knowledge-assistant": ["Docker"],
-  "gesture-smart-home": ["Railway", "Azure"],
+  "gesture-smart-home": ["Docker", "Railway", "Azure"],
 };
 
 /** Every project id, in the order the city places them. */
