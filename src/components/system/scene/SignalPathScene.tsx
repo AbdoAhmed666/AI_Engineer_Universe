@@ -2,9 +2,9 @@
  * Signal Path scene.
  *
  * The 3D rendering of the pipeline, reading the same data as the 2D
- * schematic through `./layout`. Static by design: this phase builds the
- * drawing, the camera and the labels. The travelling signal (FLOW) and
- * stage inspection (FOCUS) come later.
+ * schematic through `./layout`. It draws the composition, the camera, the
+ * labels, and FLOW — the one continuous animation on the site. Stage
+ * inspection (FOCUS) comes later.
  *
  * What the composition says, and why depth is not decoration:
  *
@@ -16,6 +16,11 @@
  * - The corpus is a lattice set further back and below, and retrieval
  *   reaches into it and returns a handful of marks. That reach is the one
  *   thing a flat diagram cannot show.
+ * - FLOW travels the request path only, and never the build path. The
+ *   phase headers already claim the build half runs once and the request
+ *   half runs per query; a signal crossing all nine stages would contradict
+ *   the drawing it sits in. So the build rail stays still because it has
+ *   already run, and each pass of the mark is one query.
  *
  * Loaded only via `next/dynamic` with `ssr: false`, so `three` and
  * `@react-three/fiber` stay out of the initial bundle. No `drei`: the scene
@@ -23,7 +28,10 @@
  * `troika-three-text` and `three-stdlib` out of the chunk.
  *
  * Budget: no lights, no shadows, no textures, no postprocessing, flat
- * `MeshBasicMaterial` only, `frameloop="demand"`.
+ * `MeshBasicMaterial` only. The frame loop runs on demand and only rises
+ * to a continuous loop while FLOW is actually running — which is to say
+ * while the band is on screen and the tab is in front. Under reduced
+ * motion the scene is never mounted at all, so FLOW cannot start.
  */
 
 "use client";
@@ -36,11 +44,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { getPhaseGroups, type PipelinePhaseId } from "@/lib/pipeline";
 import { cn } from "@/lib/utils";
-import { getSceneLayout, type SceneLayout, type Vec3 } from "./layout";
+import {
+  getSceneLayout,
+  type SceneLayout,
+  type StageNode,
+  type Vec3,
+} from "./layout";
 
 /**
  * Props for the {@link SignalPathScene} component.
@@ -48,6 +61,12 @@ import { getSceneLayout, type SceneLayout, type Vec3 } from "./layout";
 export interface SignalPathSceneProps {
   /** Called once the renderer exists and the first frame has been drawn. */
   onReady?: () => void;
+  /**
+   * Whether FLOW should run. False parks the signal and drops the renderer
+   * back to drawing on demand, so an off-screen or backgrounded band costs
+   * nothing.
+   */
+  active?: boolean;
 }
 
 /** A stage label placed in the DOM, in percentages of the canvas box. */
@@ -95,6 +114,26 @@ const SLAB = { width: 0.92, depth: 0.66, height: 0.07 } as const;
 
 /** Size of one mark in the corpus lattice. */
 const MARK = 0.12;
+
+/**
+ * FLOW: the travelling signal, in seconds and world units.
+ *
+ * One pass is one query. The gap between passes is what makes them read
+ * as separate requests rather than a conveyor belt, and the fade keeps the
+ * mark from popping in and out at the ends of the run.
+ */
+const FLOW = {
+  /** Time for one query to cross the request path. */
+  travel: 3.4,
+  /** Quiet time between one query and the next. */
+  gap: 1.1,
+  /** Fade in and out over this fraction of the run. */
+  fade: 0.12,
+  /** Size of the mark. Elongated along the flow axis, so it reads as travel. */
+  size: [0.3, 0.022, 0.15] as const,
+  /** Height above the slab tops, so the mark rides the rail visibly. */
+  lift: SLAB.height / 2 + 0.02,
+} as const;
 
 /**
  * How far a label is anchored from its slab, in world units.
@@ -282,6 +321,93 @@ function Segments({
     <lineSegments geometry={geometry} raycast={() => null}>
       <lineBasicMaterial color={color} transparent opacity={opacity} />
     </lineSegments>
+  );
+}
+
+/**
+ * FLOW: one query crossing the request path.
+ *
+ * Driven from the frame loop rather than React state — the mark moves every
+ * frame, and routing that through a render would rebuild the tree sixty
+ * times a second for a single matrix update.
+ *
+ * It travels the request stages only. They share a depth and an even
+ * spacing, so the run is a straight line along the flow axis and the
+ * position is a single interpolation rather than a walk along a polyline.
+ */
+function Signal({
+  nodes,
+  color,
+  active,
+}: {
+  nodes: readonly StageNode[];
+  color: string;
+  active: boolean;
+}): React.ReactElement | null {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const elapsed = useRef(0);
+  const { invalidate } = useThree();
+
+  const run = useMemo(() => {
+    const request = nodes.filter((node) => node.phase === "request");
+    const first = request[0];
+    const last = request[request.length - 1];
+    return first && last ? { first, last } : null;
+  }, [nodes]);
+
+  // Parking the signal is a state change of its own: without it the mark
+  // freezes mid-rail the moment the band leaves the screen, and is still
+  // sitting there when it comes back.
+  useEffect(() => {
+    if (active) return;
+    elapsed.current = 0;
+    const mesh = meshRef.current;
+    if (mesh) mesh.visible = false;
+    invalidate();
+  }, [active, invalidate]);
+
+  useFrame((_, delta) => {
+    const mesh = meshRef.current;
+    const material = materialRef.current;
+    if (!mesh || !material || !run || !active) return;
+
+    // The mesh and its material are `three` objects, mutated in place every
+    // frame — that is how react-three-fiber is meant to be driven.
+    //
+    // Clamped so a long frame — a backgrounded tab handing back a delta of
+    // several seconds — advances one step rather than teleporting.
+    elapsed.current =
+      (elapsed.current + Math.min(delta, 0.1)) % (FLOW.travel + FLOW.gap);
+
+    const progress = elapsed.current / FLOW.travel;
+    if (progress > 1) {
+      mesh.visible = false;
+      return;
+    }
+    mesh.visible = true;
+
+    const [fromX, y, z] = run.first.position;
+    const toX = run.last.position[0];
+    mesh.position.set(
+      fromX + (toX - fromX) * progress,
+      y + FLOW.lift,
+      z
+    );
+    material.opacity = Math.min(
+      1,
+      progress / FLOW.fade,
+      (1 - progress) / FLOW.fade
+    );
+  });
+
+  if (!run) return null;
+
+  return (
+    <mesh ref={meshRef} visible={false} raycast={() => null}>
+      <boxGeometry args={[...FLOW.size]} />
+      <meshBasicMaterial ref={materialRef} color={color} transparent />
+    </mesh>
   );
 }
 
@@ -492,6 +618,7 @@ function Framing({
  */
 export default function SignalPathScene({
   onReady,
+  active = false,
 }: SignalPathSceneProps): React.ReactElement {
   const layout = useMemo(() => getSceneLayout(), []);
   const palette = useMemo(() => readPalette(), []);
@@ -506,7 +633,7 @@ export default function SignalPathScene({
         orthographic
         camera={{ position: [...CAMERA.position], zoom: 69 }}
         dpr={[1, 1.75]}
-        frameloop="demand"
+        frameloop={active ? "always" : "demand"}
         gl={{ antialias: true, alpha: true, powerPreference: "low-power" }}
         style={{ width: "100%", height: "100%" }}
       >
@@ -519,6 +646,7 @@ export default function SignalPathScene({
           palette={palette}
         />
         <Segments points={layout.reach} color={palette.accent} opacity={0.4} />
+        <Signal nodes={layout.nodes} color={palette.accent} active={active} />
       </Canvas>
 
       {/*

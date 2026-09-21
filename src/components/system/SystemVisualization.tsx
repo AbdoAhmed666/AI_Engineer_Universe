@@ -9,7 +9,13 @@
  * The canvas mounts only when every condition holds: hydration has happened,
  * the band is on screen, the viewport is wide enough for a horizontal rail,
  * motion is allowed, WebGL2 is available, the device has cores to spare, and
- * the connection is not in data-saver mode. Any failure — including the scene
+ * the connection is not in data-saver mode.
+ *
+ * Mounting and running are two different questions, and this owns both. Once
+ * mounted the canvas stays mounted, so scrolling past and back does not
+ * refetch the chunk or rebuild the scene; but FLOW only runs while the band
+ * is actually on screen and the tab is actually in front, so a scene nobody
+ * is looking at costs nothing. Any failure — including the scene
  * chunk failing to load or the GL context being lost — leaves the schematic
  * exactly as it was, because the schematic is a finished artifact rather than
  * a placeholder.
@@ -49,6 +55,9 @@ const MIN_WIDTH = 1024;
 /** Minimum logical cores before the scene is considered affordable. */
 const MIN_CORES = 4;
 
+/** How far outside the viewport the band still counts as worth mounting. */
+const MARGIN = 200;
+
 /** Whether this device and session should render the scene at all. */
 function isCapable(): boolean {
   if (typeof window === "undefined") return false;
@@ -85,6 +94,8 @@ export function SystemVisualization({
 }: SystemVisualizationProps): React.ReactElement {
   const ref = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
+  const [onScreen, setOnScreen] = useState(false);
+  const [foreground, setForeground] = useState(true);
   const [ready, setReady] = useState(false);
   const [frame, setFrame] = useState<{ top: number; height: number } | null>(
     null
@@ -97,27 +108,42 @@ export function SystemVisualization({
     // Near enough to matter already: mount straight away rather than waiting
     // on an observer callback. This is the common case on a desktop first
     // paint, and it keeps the mount off the observer's critical path.
-    const margin = 200;
     const box = element.getBoundingClientRect();
-    if (box.top < window.innerHeight + margin && box.bottom > -margin) {
+    if (box.top < window.innerHeight + MARGIN && box.bottom > -MARGIN) {
       setMounted(true);
-      return;
+      setOnScreen(true);
     }
 
+    // Nothing to fall back to, and nothing that needs one: `isCapable`
+    // already requires WebGL2, and no engine ships that without an
+    // IntersectionObserver. If the band was near enough the fold the check
+    // above has already mounted it.
     if (typeof IntersectionObserver === "undefined") return;
 
+    // The observer is kept for the life of the component rather than
+    // disconnected on first sight: mounting happens once, but FLOW needs to
+    // know every time the band arrives and leaves.
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setMounted(true);
-          observer.disconnect();
-        }
+        const visible = entries.some((entry) => entry.isIntersecting);
+        setOnScreen(visible);
+        if (visible) setMounted(true);
       },
-      { rootMargin: `${margin}px 0px` }
+      { rootMargin: `${MARGIN}px 0px` }
     );
     observer.observe(element);
 
     return () => observer.disconnect();
+  }, []);
+
+  // A backgrounded tab throttles its frames rather than stopping them, so
+  // the loop is stood down explicitly instead of left to the browser.
+  useEffect(() => {
+    const onChange = () =>
+      setForeground(document.visibilityState === "visible");
+    onChange();
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
   }, []);
 
   // A lost context takes the scene away and gives the schematic back.
@@ -177,7 +203,10 @@ export function SystemVisualization({
           )}
           style={{ top: frame.top, height: frame.height }}
         >
-          <SignalPathScene onReady={onSceneReady} />
+          <SignalPathScene
+            onReady={onSceneReady}
+            active={ready && onScreen && foreground}
+          />
         </div>
       )}
     </div>
