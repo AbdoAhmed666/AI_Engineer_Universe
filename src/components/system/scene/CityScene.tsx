@@ -37,6 +37,7 @@ import {
   type CityLayout,
   type Floor,
   type Kerb,
+  type Vec3,
 } from "./city";
 
 /**
@@ -56,8 +57,12 @@ interface Palette {
   line: string;
   /** Solid building mass — lighter than the sky so facades read against it. */
   mass: string;
-  /** Lit windows. */
-  window: string;
+  /** A window with nothing behind it: articulation, not a documented part. */
+  windowDark: string;
+  /** A documented module at rest. */
+  windowDim: string;
+  /** A documented module on the floor being inspected. */
+  windowLit: string;
   /** Kerb stone. */
   kerb: string;
 }
@@ -74,7 +79,15 @@ function readPalette(): Palette {
     faint: token("--faint", "#5e6975"),
     line: "#1b2430",
     mass: token("--surface", "#0b0f16"),
-    window: token("--accent", "#8fafc4"),
+    /*
+      Warm, against a cold sky. This is the one place the site leaves its
+      steel-blue accent, and it earns it: a lit window is a documented
+      module of that layer, so the warmth is carrying a fact rather than a
+      mood. Dark windows are the short-facade filler, which claims nothing.
+    */
+    windowDark: "#161c25",
+    windowDim: "#8a6f47",
+    windowLit: "#ffe0a8",
     kerb: "#35414f",
   };
 }
@@ -245,21 +258,124 @@ function mergedEdges(boxes: readonly Box[]): THREE.BufferGeometry {
   return geometry;
 }
 
-/** Every lit window in the city, as one instanced mesh. */
+/** How long a floor takes to light up, in seconds. */
+const LIGHT_DURATION = 0.55;
+
+/** How much of that time is spread across the columns of a floor. */
+const LIGHT_STAGGER = 0.55;
+
+/** One bay, flattened out of the layout and tagged with the floor it is on. */
+interface FlatBay {
+  position: Vec3;
+  rotationY: number;
+  module: boolean;
+  /** Position of this module along its facade, 0..1, for the stagger. */
+  phase: number;
+  /** `building:floor`, matched against the floor being inspected. */
+  key: string;
+}
+
+/**
+ * Whether a bay belongs to whatever is currently being inspected.
+ *
+ * A key is either one floor (`building:floor`) or a whole building
+ * (`building:*`) — choosing a building by name wakes all of it, choosing
+ * one of its layers wakes only that.
+ */
+function inScope(bayKey: string, scope: string | null): boolean {
+  if (!scope) return false;
+  if (scope.endsWith(":*")) return bayKey.startsWith(scope.slice(0, -1));
+  return bayKey === scope;
+}
+
+/** Smoothstep, so a window fades up rather than snapping on. */
+function ease(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+}
+
+/** Every bay in the city, in one flat list. */
+function flattenBays(layout: CityLayout): FlatBay[] {
+  const out: FlatBay[] = [];
+  for (const building of layout.buildings) {
+    for (const floor of building.floors) {
+      const columns = Math.max(floor.modules.length - 1, 1);
+      for (const bay of floor.bays) {
+        out.push({
+          position: bay.position,
+          rotationY: bay.rotationY,
+          module: bay.module,
+          phase: bay.module ? bay.moduleIndex / columns : 0.5,
+          key: `${building.id}:${floor.id}`,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Every window in the city, as one instanced mesh.
+ *
+ * The lighting is the city's one piece of life, and it is not decoration:
+ * a bay on a long facade stands for a documented module of that layer, so
+ * the windows that come on when a floor is inspected are exactly its
+ * parts, lighting left to right. The short-facade bays stay dark, because
+ * they stand for nothing.
+ *
+ * Colour is per instance rather than per mesh, so the whole city is still
+ * a single draw call while every window holds its own state. The frame
+ * loop is only woken for the half second a floor takes to light.
+ */
 function Windows({
   layout,
-  color,
+  palette,
+  litKey,
 }: {
   layout: CityLayout;
-  color: string;
+  palette: Palette;
+  /** `building:floor` of the floor being inspected, or null. */
+  litKey: string | null;
 }): React.ReactElement {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const bays = useMemo(
-    () =>
-      layout.buildings.flatMap((building) =>
-        building.floors.flatMap((floor) => floor.bays)
-      ),
-    [layout]
+  const { invalidate } = useThree();
+  const bays = useMemo(() => flattenBays(layout), [layout]);
+
+  const tones = useMemo(
+    () => ({
+      dark: new THREE.Color(palette.windowDark),
+      dim: new THREE.Color(palette.windowDim),
+      lit: new THREE.Color(palette.windowLit),
+      scratch: new THREE.Color(),
+    }),
+    [palette]
+  );
+
+  // Where the lights are going, and where they came from, so the floor
+  // being left fades down while the floor being entered comes up.
+  const fade = useRef({ t: 1, from: null as string | null, to: null as string | null });
+
+  const paint = useCallback(
+    (mesh: THREE.InstancedMesh, t: number) => {
+      const { from, to } = fade.current;
+      for (let index = 0; index < bays.length; index += 1) {
+        const bay = bays[index];
+        let on = 0;
+        if (inScope(bay.key, to)) {
+          on = ease(t * (1 + LIGHT_STAGGER) - bay.phase * LIGHT_STAGGER);
+        } else if (inScope(bay.key, from)) {
+          on = 1 - ease(t);
+        }
+        // A documented module goes dim to lit; the filler only ever hints
+        // that its floor is awake.
+        const base = bay.module ? tones.dim : tones.dark;
+        const peak = bay.module ? tones.lit : tones.dim;
+        tones.scratch.copy(base).lerp(peak, on);
+        mesh.setColorAt(index, tones.scratch);
+      }
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    },
+    [bays, tones]
   );
 
   useEffect(() => {
@@ -269,16 +385,32 @@ function Windows({
     const position = new THREE.Vector3();
     const scale = new THREE.Vector3(1, 1, 1);
     const quaternion = new THREE.Quaternion();
+    const axis = new THREE.Vector3(0, 1, 0);
     for (let index = 0; index < bays.length; index += 1) {
       const bay = bays[index];
       position.set(bay.position[0], bay.position[1], bay.position[2]);
       // Facades face outward; a quad's default normal is +Z.
-      quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), bay.rotationY);
+      quaternion.setFromAxisAngle(axis, bay.rotationY);
       matrix.compose(position, quaternion, scale);
       mesh.setMatrixAt(index, matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
-  }, [bays]);
+    paint(mesh, 1);
+    invalidate();
+  }, [bays, paint, invalidate]);
+
+  useEffect(() => {
+    fade.current = { t: 0, from: fade.current.to, to: litKey };
+    invalidate();
+  }, [litKey, invalidate]);
+
+  useFrame((_, delta) => {
+    const mesh = meshRef.current;
+    if (!mesh || fade.current.t >= 1) return;
+    fade.current.t = Math.min(1, fade.current.t + delta / LIGHT_DURATION);
+    paint(mesh, fade.current.t);
+    if (fade.current.t < 1) invalidate();
+  });
 
   return (
     <instancedMesh
@@ -287,7 +419,7 @@ function Windows({
       raycast={() => null}
     >
       <planeGeometry args={[0.17, 0.3]} />
-      <meshBasicMaterial color={color} transparent opacity={0.85} fog />
+      <meshBasicMaterial fog />
     </instancedMesh>
   );
 }
@@ -332,11 +464,14 @@ function Buildings({
   layout,
   palette,
   onPick,
+  onOpen,
 }: {
   layout: CityLayout;
   palette: Palette;
   /** Called with the box under the pointer, or null when it leaves. */
   onPick: (box: Box | null) => void;
+  /** Called with the box that was clicked, to open its detail. */
+  onOpen: (box: Box | null) => void;
 }): React.ReactElement {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const boxes = useMemo(() => collectBoxes(layout.buildings), [layout]);
@@ -387,6 +522,11 @@ function Buildings({
           onPick(index === undefined ? null : (boxes[index] ?? null));
         }}
         onPointerOut={() => onPick(null)}
+        onClick={(event) => {
+          event.stopPropagation();
+          const index = event.instanceId;
+          onOpen(index === undefined ? null : (boxes[index] ?? null));
+        }}
       >
         <boxGeometry args={[1, 1, 1]} />
         <meshBasicMaterial color={palette.mass} fog />
@@ -514,6 +654,10 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
   // it, even though no floor is under the pointer.
   const [picked, setPicked] = useState<Box | null>(null);
   const [inspected, setInspected] = useState<ProjectId | null>(null);
+  // A selected floor stays lit and opens its own detail; a hovered one
+  // only lights. Selection wins, so moving the pointer away does not
+  // close what someone deliberately opened.
+  const [selected, setSelected] = useState<string | null>(null);
   const panelId = useId();
 
   const building = useMemo(
@@ -521,10 +665,33 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
     [layout, inspected]
   );
 
+  const onOpen = useCallback((box: Box | null) => {
+    if (!box) return;
+    setInspected(box.building);
+    setSelected(box.floor ? box.floor.id : null);
+  }, []);
+
   const onPick = useCallback((box: Box | null) => {
     setPicked(box);
     if (box) setInspected(box.building);
   }, []);
+
+  /**
+   * What is lit. A chosen layer lights that layer; a layer under the
+   * pointer lights that one; a building chosen by name lights all of it.
+   */
+  const litKey = useMemo(() => {
+    if (selected && inspected) return `${inspected}:${selected}`;
+    if (picked?.floor) return `${picked.building}:${picked.floor.id}`;
+    if (inspected) return `${inspected}:*`;
+    return null;
+  }, [selected, inspected, picked]);
+
+  /** The floor whose detail the panel is showing. */
+  const openFloor = useMemo(
+    () => building?.floors.find((floor) => floor.id === selected) ?? null,
+    [building, selected]
+  );
   const orbit = useRef<OrbitState>({ azimuth: 0.44, polar: 1.50, radius: 16.5 });
   const labelRefs = useRef<(HTMLElement | null)[]>([]);
   const dragging = useRef<{ x: number; y: number } | null>(null);
@@ -621,12 +788,17 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
           kerbColor={palette.kerb}
           laneColor={palette.faint}
         />
-        <Buildings layout={layout} palette={palette} onPick={onPick} />
+        <Buildings
+          layout={layout}
+          palette={palette}
+          onPick={onPick}
+          onOpen={onOpen}
+        />
         <FloorHighlight
           box={picked?.building === inspected ? picked : null}
           color={palette.accent}
         />
-        <Windows layout={layout} color={palette.window} />
+        <Windows layout={layout} palette={palette} litKey={litKey} />
       </Canvas>
 
       {/*
@@ -653,10 +825,18 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
             )}
             style={{ opacity: 0 }}
             onPointerDown={(event) => event.stopPropagation()}
-            onFocus={() => setInspected(item.id)}
-            onBlur={() =>
-              setInspected((current) => (current === item.id ? null : current))
-            }
+            // Deliberately no onBlur. Focus moves *into* the panel the
+            // moment a layer is chosen, and clearing the building there
+            // would unmount the very panel being reached for. An inspector
+            // stays open until something else is inspected.
+            onFocus={() => {
+              setInspected(item.id);
+              setSelected(null);
+            }}
+            onClick={() => {
+              setInspected(item.id);
+              setSelected(null);
+            }}
           >
             {item.name}
           </button>
@@ -666,53 +846,118 @@ export default function CityScene({ onReady }: CitySceneProps): React.ReactEleme
       {building && (
         <div
           id={panelId}
-          className="pointer-events-none absolute bottom-20 left-6 w-[min(24rem,calc(100%-3rem))] rounded-md border border-line-strong bg-surface p-5 sm:left-8"
+          className="pointer-events-auto absolute bottom-20 left-6 w-[min(25rem,calc(100%-3rem))] rounded-md border border-line-strong bg-surface p-5 sm:left-8"
         >
-          <p className="eyebrow text-accent">{building.name}</p>
-          {building.plinth && (
-            <p className="mt-1 text-[11px] text-faint">
-              {`Deployed on ${building.plinth.labels.join(", ")}`}
-            </p>
-          )}
+          {openFloor ? (
+            /*
+              One floor, in full. Every module carries the line in
+              Projects.tsx it was derived from — the provenance the data has
+              recorded since fe19778 and nothing has ever shown.
+            */
+            <>
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="eyebrow text-muted-foreground transition-colors hover:text-accent"
+              >
+                <span aria-hidden="true">←</span> {building.name}
+              </button>
 
-          {/*
-            Floors top down, the way the building is read rather than the
-            way it is stacked. Each one names its parts and the pipeline
-            stages it implements — the same stages the Hero's rail draws,
-            which is the whole point: the building is where they landed.
-          */}
-          <ul className="mt-4 flex flex-col-reverse gap-3">
-            {building.floors.map((floor) => (
-              <li
-                key={floor.id}
+              <p
                 className={cn(
-                  "border-l pl-3",
-                  picked?.floor?.id === floor.id && picked.building === building.id
-                    ? "border-accent"
-                    : "border-line"
+                  "mt-3 font-mono text-h3",
+                  openFloor.kind === "ai" ? "text-accent" : "text-foreground"
                 )}
               >
-                <p
-                  className={cn(
-                    "font-mono text-[11px]",
-                    floor.kind === "ai" ? "text-accent" : "text-foreground"
-                  )}
-                >
-                  {floor.label}
+                {openFloor.label}
+              </p>
+              <p className="mt-1 text-[11px] text-faint">
+                {`${openFloor.modules.length} ${
+                  openFloor.modules.length === 1 ? "part" : "parts"
+                } · ${openFloor.modules.length === 1 ? "one lit window" : "one lit window each"}`}
+              </p>
+
+              <ul className="mt-4 flex flex-col gap-3">
+                {openFloor.modules.map((module) => (
+                  <li key={module.label}>
+                    <p className="font-mono text-[12px] text-foreground">
+                      {module.label}
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                      {module.source}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+
+              {openFloor.stages.length > 0 && (
+                <p className="mt-4 border-t border-line pt-3 text-[11px] text-faint">
+                  {`Implements ${openFloor.stages.map(stageLabel).join(", ")}`}
                 </p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                  {floor.modules.join(" · ")}
+              )}
+            </>
+          ) : (
+            /* The building at a glance: what it stands on, and its layers. */
+            <>
+              <p className="eyebrow text-accent">{building.name}</p>
+              {building.plinth && (
+                <p className="mt-1 text-[11px] text-faint">
+                  {`Deployed on ${building.plinth.labels.join(", ")}`}
                 </p>
-                {floor.stages.length > 0 && (
-                  <p className="mt-0.5 text-[11px] text-faint">
-                    {`Implements ${floor.stages.map(stageLabel).join(", ")}`}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
+              )}
+
+              {/*
+                Floors top down, the way a tower is read rather than the way
+                it is stacked. Each row is also the keyboard route into that
+                floor, so the world is not pointer-only.
+              */}
+              <ul className="mt-4 flex flex-col-reverse gap-1">
+                {building.floors.map((floor) => (
+                  <li key={floor.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(floor.id)}
+                      onPointerEnter={() =>
+                        setPicked({
+                          position: [...floor.position] as [number, number, number],
+                          size: [floor.width, floor.height, floor.depth],
+                          accent: floor.kind === "ai",
+                          building: building.id,
+                          floor,
+                        })
+                      }
+                      className={cn(
+                        "w-full border-l py-1 pl-3 text-left transition-colors",
+                        picked?.floor?.id === floor.id &&
+                          picked.building === building.id
+                          ? "border-accent"
+                          : "border-line hover:border-line-strong"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "block font-mono text-[11px]",
+                          floor.kind === "ai" ? "text-accent" : "text-foreground"
+                        )}
+                      >
+                        {floor.label}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                        {floor.modules.map((module) => module.label).join(" · ")}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="mt-4 border-t border-line pt-3 text-[11px] text-faint">
+                Select a layer to see what each part came from
+              </p>
+            </>
+          )}
         </div>
       )}
+
     </div>
   );
 }

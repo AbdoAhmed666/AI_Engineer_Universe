@@ -26,6 +26,7 @@ import {
   cityOrder,
   deployments,
   type ArchitectureLayer,
+  type ArchitectureModule,
   type BuildingForm,
   type LayerKind,
 } from "@/lib/architecture";
@@ -35,11 +36,24 @@ import type { ProjectId } from "@/lib/projects";
 /** A point in world space. */
 export type Vec3 = readonly [number, number, number];
 
-/** A lit window bay on a facade. */
+/**
+ * A window bay on a facade.
+ *
+ * `module` is what makes the lighting mean something. A bay on a long
+ * facade is one documented module of that layer — the same fact the
+ * floor's width already encodes, drawn at a smaller scale. A bay on a
+ * short facade is articulation, filled at the same spacing so the building
+ * does not read as a blank slab. Only the first kind is ever lit, so a lit
+ * window is a part of the system and a dark one is just a wall.
+ */
 export interface Bay {
   readonly position: Vec3;
   /** Rotation about Y that turns the quad to face out of its wall. */
   readonly rotationY: number;
+  /** True when this bay stands for a documented module. */
+  readonly module: boolean;
+  /** Index of the module this bay stands for, or -1. Drives the stagger. */
+  readonly moduleIndex: number;
 }
 
 /** One floor of a building. */
@@ -52,8 +66,8 @@ export interface Floor {
   readonly width: number;
   readonly depth: number;
   readonly height: number;
-  /** Module labels, shown when the building is opened. */
-  readonly modules: readonly string[];
+  /** The parts of this layer, each carrying the line it was derived from. */
+  readonly modules: readonly ArchitectureModule[];
   /** Lit windows on this floor: one column per module, stacked in rows. */
   readonly bays: readonly Bay[];
   /** Pipeline stages this floor implements. */
@@ -142,7 +156,8 @@ function bays(
     columns: number,
     span: number,
     toPoint: (offset: number, y: number) => Vec3,
-    rotationY: number
+    rotationY: number,
+    isModule: boolean
   ) => {
     const usable = span - 0.34;
     if (usable <= 0 || columns <= 0) return;
@@ -153,6 +168,8 @@ function bays(
         out.push({
           position: toPoint(-usable / 2 + pitch * (column + 0.5), y),
           rotationY,
+          module: isModule && column < moduleCount,
+          moduleIndex: isModule && column < moduleCount ? column : -1,
         });
       }
     }
@@ -163,10 +180,10 @@ function bays(
   const halfW = width / 2 + BAY.inset;
   const halfD = depth / 2 + BAY.inset;
 
-  wall(long, width, (offset, y) => [centreX + offset, y, halfD], 0);
-  wall(long, width, (offset, y) => [centreX + offset, y, -halfD], Math.PI);
-  wall(short, depth, (offset, y) => [centreX + halfW, y, offset], Math.PI / 2);
-  wall(short, depth, (offset, y) => [centreX - halfW, y, offset], -Math.PI / 2);
+  wall(long, width, (offset, y) => [centreX + offset, y, halfD], 0, true);
+  wall(long, width, (offset, y) => [centreX + offset, y, -halfD], Math.PI, true);
+  wall(short, depth, (offset, y) => [centreX + halfW, y, offset], Math.PI / 2, false);
+  wall(short, depth, (offset, y) => [centreX - halfW, y, offset], -Math.PI / 2, false);
 
   return out;
 }
@@ -218,7 +235,7 @@ function buildOne(id: ProjectId, originX: number): Building {
       width,
       depth: proportions.depth,
       height,
-      modules: layer.modules.map((module) => module.label),
+      modules: layer.modules,
       stages: layer.stages,
       bays: bays(
         originX,
