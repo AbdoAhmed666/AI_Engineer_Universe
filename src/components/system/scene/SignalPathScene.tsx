@@ -28,9 +28,18 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { getPhaseGroups, type PipelinePhaseId } from "@/lib/pipeline";
+import { cn } from "@/lib/utils";
 import { getSceneLayout, type SceneLayout, type Vec3 } from "./layout";
 
 /**
@@ -48,6 +57,29 @@ interface ProjectedLabel {
   ordinal: string;
   x: number;
   y: number;
+  /** True when the label hangs below its slab rather than sitting above it. */
+  below: boolean;
+}
+
+/**
+ * A phase header, and the divider that opens it. The 2D schematic names
+ * both halves of the lifecycle and marks where one becomes the other; the
+ * scene would be a step backwards from its own fallback without them.
+ */
+interface ProjectedPhase {
+  id: string;
+  /** e.g. `"BUILD · INDEXED ONCE"`. */
+  text: string;
+  /** Centre of the header over the phase's own stages. */
+  x: number;
+  /** Where this phase begins. Null for the first one, which opens the flow. */
+  dividerX: number | null;
+}
+
+/** One pass of the framing, handed to the DOM label layer. */
+interface Projection {
+  stages: ProjectedLabel[];
+  phases: ProjectedPhase[];
 }
 
 /** Palette pulled from the design tokens, so the scene cannot drift. */
@@ -64,8 +96,23 @@ const SLAB = { width: 0.92, depth: 0.66, height: 0.07 } as const;
 /** Size of one mark in the corpus lattice. */
 const MARK = 0.12;
 
-/** How far above a slab its label is anchored, in world units. */
+/**
+ * How far a label is anchored from its slab, in world units.
+ *
+ * The request row carries its labels above; the build row hangs them
+ * below. That is not a stylistic alternation — the corpus lattice sits
+ * behind the build row, and "behind" is "higher up the screen" here, so a
+ * label lifted above a build slab lands inside the lattice. Dropping them
+ * puts them in the empty band between the two rows, where the two rows'
+ * stages never share an x, so nothing collides either way.
+ */
 const LABEL_LIFT = 0.46;
+const LABEL_DROP = -0.46;
+
+/** Signed offset from a stage's slab to its label anchor. */
+function labelOffset(phase: PipelinePhaseId): number {
+  return phase === "build" ? LABEL_DROP : LABEL_LIFT;
+}
 
 /** Reads the token values off the document. */
 function readPalette(): ScenePalette {
@@ -266,6 +313,51 @@ function Rail({
 // ─── Framing and projection ──────────────────────────────────────────────────
 
 /**
+ * Where the camera stands, and how much room is kept around the drawing.
+ *
+ * The band is roughly five times wider than it is tall, so height is what
+ * the fit runs out of first — and the corpus, set three units behind the
+ * rail, is most of what fills it. The elevation is therefore shallow
+ * enough to keep the whole composition within that height at a zoom where
+ * adjacent stage labels still clear each other, and steep enough that a
+ * slab still reads as a plate rather than a line.
+ */
+const CAMERA = { position: [0, 9, 11] as const, target: [0, 0, -0.6] as const };
+
+/** World-unit breathing room kept around the drawing when fitting it. */
+const PADDING = { x: 0.7, top: 0.95, bottom: 0.35 } as const;
+
+/**
+ * Every point the framing has to keep inside the band.
+ *
+ * The flow's width alone is not enough. The corpus sits well behind the
+ * rail, and in this projection "behind" reads as "higher up the screen",
+ * so fitting on width pushes the lattice out through the top of the band.
+ */
+function framingPoints(layout: SceneLayout): THREE.Vector3[] {
+  const points: THREE.Vector3[] = [];
+  const halfWidth = SLAB.width / 2;
+  const halfDepth = SLAB.depth / 2;
+
+  for (const node of layout.nodes) {
+    const [x, y, z] = node.position;
+    for (const dx of [-halfWidth, halfWidth]) {
+      for (const dz of [-halfDepth, halfDepth]) {
+        points.push(new THREE.Vector3(x + dx, y, z + dz));
+      }
+    }
+    // The label has to be framed with its slab, on whichever side it sits.
+    points.push(new THREE.Vector3(x, y + labelOffset(node.phase), z));
+  }
+
+  for (const [x, y, z] of layout.field) {
+    points.push(new THREE.Vector3(x, y, z));
+  }
+
+  return points;
+}
+
+/**
  * Frames the layout and reports where each stage lands on screen.
  *
  * The camera is orthographic and fixed, so the projection only has to be
@@ -278,7 +370,7 @@ function Framing({
   onReady,
 }: {
   layout: SceneLayout;
-  onProject: (labels: ProjectedLabel[]) => void;
+  onProject: (projection: Projection) => void;
   onReady?: () => void;
 }): null {
   const { camera, size, invalidate } = useThree();
@@ -286,39 +378,103 @@ function Framing({
   useEffect(() => {
     if (size.width === 0 || size.height === 0) return;
 
-    // Fit the drawing's width, with room for the labels above each slab.
-    //
     // The camera is a `three` object, and framing it means mutating it —
     // that is how react-three-fiber is meant to be driven. The compiler's
     // immutability rule cannot see that, so it is waived here and only here.
     /* eslint-disable react-hooks/immutability */
-    const margin = 1.6;
-    const target = new THREE.Vector3(0, -0.15, -1.4);
     const orthographic = camera as THREE.OrthographicCamera;
-    orthographic.zoom = size.width / ((layout.extent.x + margin) * 2);
-    camera.position.set(1, 12, 10);
-    camera.lookAt(target);
+
+    // Orient first. The camera shares the target's X, so the flow axis
+    // carries no roll and the rail reads level. The only tilt left in the
+    // drawing is the build phase sitting behind the request path — which is
+    // the one thing the depth is here to say.
+    const target = new THREE.Vector3(...CAMERA.target);
+    orthographic.position.set(target.x, CAMERA.position[1], CAMERA.position[2]);
+    orthographic.lookAt(target);
+    orthographic.updateMatrixWorld();
+
+    // Then fit what is actually drawn, measured in the camera's own space
+    // so the fit follows the projection instead of estimating it.
+    const local = new THREE.Vector3();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const point of framingPoints(layout)) {
+      local.copy(point).applyMatrix4(orthographic.matrixWorldInverse);
+      minX = Math.min(minX, local.x);
+      maxX = Math.max(maxX, local.x);
+      minY = Math.min(minY, local.y);
+      maxY = Math.max(maxY, local.y);
+    }
+
+    // Top padding is the deeper of the two: it is the strip the phase
+    // headers occupy, above the drawing.
+    const spanX = maxX - minX + PADDING.x * 2;
+    const spanY = maxY - minY + PADDING.top + PADDING.bottom;
+    orthographic.zoom = Math.min(size.width / spanX, size.height / spanY);
+
+    // Recentre by sliding the camera along its own right and up axes, so
+    // the measured box lands in the middle of the band.
+    const right = new THREE.Vector3().setFromMatrixColumn(
+      orthographic.matrixWorld,
+      0
+    );
+    const up = new THREE.Vector3().setFromMatrixColumn(
+      orthographic.matrixWorld,
+      1
+    );
+    orthographic.position
+      .addScaledVector(right, (minX + maxX) / 2)
+      .addScaledVector(up, (minY + maxY + PADDING.top - PADDING.bottom) / 2);
     orthographic.updateProjectionMatrix();
-    camera.updateMatrixWorld();
+    orthographic.updateMatrixWorld();
     /* eslint-enable react-hooks/immutability */
 
-    const projected = layout.nodes.map((node) => {
+    /** World point to a percentage of the canvas box. */
+    const toScreen = (x: number, y: number, z: number) => {
+      const projected = new THREE.Vector3(x, y, z).project(camera);
+      return {
+        x: ((projected.x + 1) / 2) * 100,
+        y: ((1 - projected.y) / 2) * 100,
+      };
+    };
+
+    const stages = layout.nodes.map((node) => {
       // Anchor the label clear of the slab: the slab has depth, so its drawn
-      // top edge sits well above its centre in screen space, and a label
+      // edges sit well away from its centre in screen space, and a label
       // pinned to the centre lands on top of the drawing.
-      const vector = new THREE.Vector3(...node.position);
-      vector.y += LABEL_LIFT;
-      vector.project(camera);
+      const [x, y, z] = node.position;
+      const below = node.phase === "build";
+      const screen = toScreen(x, y + labelOffset(node.phase), z);
       return {
         id: node.id,
         label: node.label,
         ordinal: String(node.index + 1).padStart(2, "0"),
-        x: ((vector.x + 1) / 2) * 100,
-        y: ((1 - vector.y) / 2) * 100,
+        x: screen.x,
+        y: screen.y,
+        below,
       };
     });
 
-    onProject(projected);
+    // Phase headers read from the same grouping the schematic uses, so the
+    // two representations cannot drift apart.
+    const phases = getPhaseGroups().map((group, index) => {
+      const own = layout.nodes.filter((node) => node.phase === group.phase.id);
+      const centreX =
+        (own[0].position[0] + own[own.length - 1].position[0]) / 2;
+      return {
+        id: group.phase.id,
+        text: `${group.phase.label} · ${group.phase.cadence}`.toUpperCase(),
+        x: toScreen(centreX, 0, 0).x,
+        dividerX:
+          index > 0 && layout.phaseBoundaryX !== null
+            ? toScreen(layout.phaseBoundaryX, 0, 0).x
+            : null,
+      };
+    });
+
+    onProject({ stages, phases });
     invalidate();
     onReady?.();
   }, [camera, size.width, size.height, layout, onProject, invalidate, onReady]);
@@ -339,19 +495,22 @@ export default function SignalPathScene({
 }: SignalPathSceneProps): React.ReactElement {
   const layout = useMemo(() => getSceneLayout(), []);
   const palette = useMemo(() => readPalette(), []);
-  const [labels, setLabels] = useState<ProjectedLabel[]>([]);
+  const [projection, setProjection] = useState<Projection>({
+    stages: [],
+    phases: [],
+  });
 
   return (
     <div className="relative h-full w-full">
       <Canvas
         orthographic
-        camera={{ position: [1, 12, 10], zoom: 69 }}
+        camera={{ position: [...CAMERA.position], zoom: 69 }}
         dpr={[1, 1.75]}
         frameloop="demand"
         gl={{ antialias: true, alpha: true, powerPreference: "low-power" }}
         style={{ width: "100%", height: "100%" }}
       >
-        <Framing layout={layout} onProject={setLabels} onReady={onReady} />
+        <Framing layout={layout} onProject={setProjection} onReady={onReady} />
         <Rail points={layout.rail} color={palette.foreground} />
         <Stages positions={layout.rail} palette={palette} />
         <Corpus
@@ -369,10 +528,30 @@ export default function SignalPathScene({
         are hidden from assistive technology.
       */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        {labels.map((item) => (
+        {projection.phases.map((phase) => (
+          <Fragment key={phase.id}>
+            {phase.dividerX !== null && (
+              <span
+                className="absolute inset-y-0 border-l border-dashed border-line"
+                style={{ left: `${phase.dividerX}%` }}
+              />
+            )}
+            <span
+              className="eyebrow absolute top-0 -translate-x-1/2 whitespace-nowrap text-accent"
+              style={{ left: `${phase.x}%` }}
+            >
+              {phase.text}
+            </span>
+          </Fragment>
+        ))}
+
+        {projection.stages.map((item) => (
           <span
             key={item.id}
-            className="absolute -translate-x-1/2 -translate-y-full whitespace-nowrap text-center font-mono leading-tight"
+            className={cn(
+              "absolute -translate-x-1/2 whitespace-nowrap text-center font-mono leading-tight",
+              !item.below && "-translate-y-full"
+            )}
             style={{ left: `${item.x}%`, top: `${item.y}%` }}
           >
             <span className="block text-[10px] text-faint">{item.ordinal}</span>
