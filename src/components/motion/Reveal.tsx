@@ -7,6 +7,12 @@
  * Under `prefers-reduced-motion` the global `MotionConfig` skips the
  * transform entirely.
  *
+ * Granularity rule: wrap the largest unit a reader consumes as one thing.
+ * A project case study or an experience entry can stand alone, so each gets
+ * its own reveal; the rows of the stack table and the contact links cannot,
+ * so each of those sections reveals as a single block. This keeps the page
+ * to eleven reveals rather than a cascade of dozens.
+ *
  * @example
  * <Reveal delay={0.1}>
  *   <CaseStudy />
@@ -17,7 +23,7 @@
 
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { easings } from "@/lib/constants";
+import { motionEase, motionSeconds } from "@/lib/animations";
 
 /**
  * Props for the {@link Reveal} component.
@@ -46,7 +52,11 @@ export function Reveal({
       initial={{ y: 16 }}
       whileInView={{ y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.6, ease: easings.emphasized, delay }}
+      transition={{
+        duration: motionSeconds.reveal,
+        ease: motionEase.entrance,
+        delay,
+      }}
     >
       {children}
     </motion.div>

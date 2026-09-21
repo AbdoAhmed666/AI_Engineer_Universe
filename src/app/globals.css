@@ -35,18 +35,16 @@
   --accent-foreground: #080a0f;
 
   /*
-   * Legacy aliases — only the current Hero still uses these.
-   * Remove them with the Hero rebuild (Phase 2).
+   * Motion. Mirrors the tokens in `@/lib/animations`: CSS owns gesture
+   * durations, that module owns the BOOT schedule (the delays).
    */
-  --muted: var(--surface);
-  --primary: var(--accent);
-  --primary-foreground: var(--accent-foreground);
-  --secondary: var(--raised);
-  --secondary-foreground: var(--foreground);
-  --border: #1a212b;
-  --input: #1a212b;
-  --ring: var(--accent);
-  --ballet-blue: var(--accent);
+  --motion-instant: 120ms;
+  --motion-quick: 180ms;
+  --motion-base: 300ms;
+  --motion-reveal: 600ms;
+  --motion-boot-step: 220ms;
+  --motion-ease-entrance: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-state: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @theme inline {
@@ -62,17 +60,6 @@
   --color-accent-dim: var(--accent-dim);
   --color-accent-soft: var(--accent-soft);
   --color-accent-foreground: var(--accent-foreground);
-
-  /* Legacy aliases (see :root). */
-  --color-muted: var(--muted);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-ballet-blue: var(--ballet-blue);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -179,6 +166,136 @@ body {
 }
 
 /*
+ * Motion gestures — TRACE, plus the marks and settles that BOOT schedules.
+ *
+ * These are declared *only* inside `prefers-reduced-motion: no-preference`.
+ * That is the whole reduced-motion strategy for non-Framer animation: with
+ * the preference set the rules do not exist, so every element renders at
+ * its own final style with nothing to undo and no JavaScript involved.
+ *
+ * `--motion-delay` carries the BOOT schedule and is written inline by the
+ * server-rendered schematic (see `bootDelay` in `@/lib/animations`), so the
+ * sequence needs no client-side code at all. Every gesture animates opacity
+ * or transform only, so nothing reflows and nothing shifts.
+ *
+ * FLOW, TRACK and FOCUS are not implemented — see `MotionPrimitive`.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  /*
+   * TRACE — a stroke drawing itself.
+   *
+   * `--motion-length` must be at least the stroke's on-screen length in
+   * CSS pixels. It cannot be derived with `pathLength`: these strokes use
+   * `vector-effect: non-scaling-stroke`, which forces the dash pattern into
+   * screen space, so a normalised `pathLength` resolves to a literal 1px
+   * dash. The schematic therefore passes a value computed from the shape's
+   * user-space length and the container's bounded maximum scale.
+   */
+  @keyframes motion-trace {
+    from {
+      stroke-dashoffset: var(--motion-length);
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* A node appearing on a rail. */
+  @keyframes motion-mark {
+    from {
+      transform: scale(0);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+
+  /* A label or metadata group settling into place. */
+  @keyframes motion-settle {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /*
+   * A block of Hero content lifting into place. Transform only and never
+   * opacity, so the heading, lead and actions are legible and clickable
+   * from the first paint — the entrance moves content that is already
+   * there rather than revealing content that was hidden.
+   */
+  @keyframes motion-lift {
+    from {
+      transform: translateY(10px);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  /* A rule drawing itself from its leading edge. */
+  @keyframes motion-rule {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  .motion-trace {
+    stroke-dasharray: var(--motion-length);
+    animation: motion-trace var(--motion-duration, var(--motion-boot-step))
+      var(--motion-ease-entrance) var(--motion-delay, 0ms) both;
+  }
+
+  .motion-mark {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: motion-mark var(--motion-duration, var(--motion-quick))
+      var(--motion-ease-entrance) var(--motion-delay, 0ms) both;
+  }
+
+  .motion-settle {
+    animation: motion-settle var(--motion-duration, var(--motion-boot-step))
+      var(--motion-ease-entrance) var(--motion-delay, 0ms) both;
+  }
+
+  .motion-lift {
+    animation: motion-lift var(--motion-duration, var(--motion-base))
+      var(--motion-ease-entrance) var(--motion-delay, 0ms) both;
+  }
+
+  .motion-rule {
+    transform-origin: left center;
+    animation: motion-rule var(--motion-duration, var(--motion-base))
+      var(--motion-ease-entrance) var(--motion-delay, 0ms) both;
+  }
+
+  /*
+   * BOOT deferral.
+   *
+   * `BootInView` adds this class only when its block is off screen at
+   * hydration, so resetting the sequence is never visible; removing it as
+   * the block scrolls into view starts the sequence again from zero. The
+   * reset state is each element's own final style, which is why a held
+   * block that is never released — no scroll, an anchored deep link — is
+   * still fully readable. Without JavaScript the class is never added and
+   * BOOT simply plays at load, as it did before.
+   */
+  .motion-hold .motion-trace,
+  .motion-hold .motion-mark,
+  .motion-hold .motion-settle,
+  .motion-hold .motion-rule {
+    animation: none;
+  }
+}
+
+/*
  * Technical grid texture used by the Background component.
  * Paired with `mask-fade-radial` so it only frames the top of the page.
  */
@@ -196,4 +313,19 @@ body {
     black 10%,
     transparent 75%
   );
+}
+
+/*
+ * The 3D scene replaces the schematic's drawing while leaving its caption
+ * and its screen-reader list untouched. `SystemVisualization` adds
+ * `scene-ready` once the canvas has rendered a frame; the canvas only ever
+ * mounts when motion is allowed, so this fade is never reached under
+ * `prefers-reduced-motion`.
+ */
+[data-boot-anchor] {
+  transition: opacity var(--motion-reveal) var(--motion-ease-state);
+}
+
+.scene-ready [data-boot-anchor] {
+  opacity: 0;
 }

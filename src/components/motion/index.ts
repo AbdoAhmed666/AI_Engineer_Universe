@@ -7,3 +7,6 @@
 
 export { Reveal } from "./Reveal";
 export type { RevealProps } from "./Reveal";
+
+export { BootInView } from "./BootInView";
+export type { BootInViewProps } from "./BootInView";
