@@ -43,6 +43,8 @@
   --motion-base: 300ms;
   --motion-reveal: 600ms;
   --motion-boot-step: 220ms;
+  /* One query crossing the request path, plus the pause after it. */
+  --motion-flow: 4500ms;
   --motion-ease-entrance: cubic-bezier(0.2, 0, 0, 1);
   --motion-ease-state: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -277,6 +279,85 @@ body {
   }
 
   /*
+   * FLOW — a query crossing the request path.
+   *
+   * The schematic's counterpart to the scene's travelling mark, and the
+   * same claim: it runs the request half only, because the build half is
+   * indexed once and the phase header above it says so. One pass is one
+   * query, and the pause between passes is what keeps them reading as
+   * separate requests rather than a conveyor belt.
+   *
+   * This is the only continuous animation on the site and the two can
+   * never both be running: the scene replaces this drawing when it
+   * arrives, and `scene-ready` stops this one outright.
+   *
+   * `--flow-distance` is the span from the first request stage to the
+   * last, in the rail's own user units, written inline by the server.
+   */
+  @keyframes motion-flow-x {
+    0% {
+      transform: translateX(0);
+      opacity: 0;
+    }
+    6% {
+      opacity: 1;
+    }
+    68% {
+      transform: translateX(var(--flow-distance));
+      opacity: 1;
+    }
+    76%,
+    100% {
+      transform: translateX(var(--flow-distance));
+      opacity: 0;
+    }
+  }
+
+  @keyframes motion-flow-y {
+    0% {
+      transform: translateY(0);
+      opacity: 0;
+    }
+    6% {
+      opacity: 1;
+    }
+    68% {
+      transform: translateY(var(--flow-distance));
+      opacity: 1;
+    }
+    76%,
+    100% {
+      transform: translateY(var(--flow-distance));
+      opacity: 0;
+    }
+  }
+
+  .motion-flow-x,
+  .motion-flow-y {
+    animation-duration: var(--motion-flow, 4500ms);
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+
+  .motion-flow-x {
+    animation-name: motion-flow-x;
+  }
+
+  .motion-flow-y {
+    animation-name: motion-flow-y;
+  }
+
+  /*
+   * Off screen it stops, rather than being left to the browser to throttle:
+   * `BootInView` marks the band idle whenever it is not in view.
+   */
+  .motion-idle .motion-flow-x,
+  .motion-idle .motion-flow-y {
+    animation-play-state: paused;
+  }
+
+  /*
    * BOOT deferral.
    *
    * `BootInView` adds this class only when its block is off screen at
@@ -291,6 +372,12 @@ body {
   .motion-hold .motion-mark,
   .motion-hold .motion-settle,
   .motion-hold .motion-rule {
+    animation: none;
+  }
+
+  /* FLOW waits for the assembly it travels to finish arriving. */
+  .motion-hold .motion-flow-x,
+  .motion-hold .motion-flow-y {
     animation: none;
   }
 }
@@ -328,4 +415,14 @@ body {
 
 .scene-ready [data-boot-anchor] {
   opacity: 0;
+}
+
+/*
+ * Only one FLOW at a time. Once the scene is drawing, the schematic's own
+ * signal is not merely hidden — it is stopped, so nothing is animating
+ * underneath a drawing nobody can see.
+ */
+.scene-ready .motion-flow-x,
+.scene-ready .motion-flow-y {
+  animation: none;
 }

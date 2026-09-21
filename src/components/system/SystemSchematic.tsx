@@ -210,6 +210,26 @@ function HorizontalSchematic(): React.ReactElement {
         {...HAIRLINE}
       />
 
+      {/*
+        FLOW. One query, crossing the request half of the rail — never the
+        build half, which the header above it says is indexed once. It
+        starts after BOOT has finished assembling the thing it travels.
+      */}
+      <rect
+        className="motion-flow-x"
+        style={
+          {
+            "--flow-distance": `${horizontalX(stages.length - 1) - horizontalX(dividerIndex)}px`,
+            "--motion-delay": `${bootDelay(stages.length - 1, "meta") + 260}ms`,
+          } as React.CSSProperties
+        }
+        x={horizontalX(dividerIndex) - 8}
+        y={H.railY - 1.5}
+        width={16}
+        height={3}
+        fill="var(--accent)"
+      />
+
       {/* Stages. */}
       {stages.map((stage, index) => {
         const x = horizontalX(index);
@@ -406,6 +426,9 @@ function VerticalSchematic({
   const { headers, rows, height } = layoutVertical();
   const firstNodeY = rows[0].nodeY;
   const lastNodeY = rows[rows.length - 1].nodeY;
+  // Where the request half begins, which is where FLOW starts from.
+  const requestFirstY =
+    rows.find((row) => row.stage.phase === "request")?.nodeY ?? null;
 
   return (
     <svg
@@ -439,6 +462,29 @@ function VerticalSchematic({
         stroke="var(--accent)"
         {...HAIRLINE}
       />
+
+      {/*
+        FLOW, on the vertical rail. Identical claim to the horizontal one —
+        the request half only — and the only place most phone readers will
+        ever see the system move, since the scene needs a wider viewport
+        than a phone has.
+      */}
+      {requestFirstY !== null && (
+        <rect
+          className="motion-flow-y"
+          style={
+            {
+              "--flow-distance": `${lastNodeY - requestFirstY}px`,
+              "--motion-delay": `${bootDelay(rows.length - 1, "meta") + 260}ms`,
+            } as React.CSSProperties
+          }
+          x={V.railX - 1.5}
+          y={requestFirstY - 8}
+          width={3}
+          height={16}
+          fill="var(--accent)"
+        />
+      )}
 
       {/* Phase headers. */}
       {headers.map((header) => (

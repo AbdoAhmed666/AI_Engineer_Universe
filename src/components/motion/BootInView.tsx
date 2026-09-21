@@ -66,6 +66,7 @@ export function BootInView({
   const ref = useRef<HTMLDivElement>(null);
   // Starts false so the server and client render the same markup.
   const [held, setHeld] = useState(false);
+  const [idle, setIdle] = useState(false);
 
   useEffect(() => {
     const wrapper = ref.current;
@@ -110,8 +111,38 @@ export function BootInView({
     return () => observer.disconnect();
   }, [rootMargin, releaseRatio]);
 
+  /*
+   * FLOW is the site's one continuous animation, and the rule is that it
+   * stops when it is not being watched. BOOT is released once and forgotten,
+   * so it cannot answer this — a second observer stays for the life of the
+   * block and marks it idle whenever the drawing is off screen.
+   *
+   * Under reduced motion there is nothing running to pause, and without an
+   * observer the block is simply never marked idle, which is the same
+   * behaviour the site had before FLOW existed.
+   */
+  useEffect(() => {
+    const wrapper = ref.current;
+    if (!wrapper || typeof IntersectionObserver === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const element =
+      wrapper.querySelector<HTMLElement>("[data-boot-anchor]") ?? wrapper;
+
+    const observer = new IntersectionObserver(
+      (entries) => setIdle(!entries.some((entry) => entry.isIntersecting)),
+      { rootMargin: "0px" }
+    );
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div ref={ref} className={cn(className, held && "motion-hold")}>
+    <div
+      ref={ref}
+      className={cn(className, held && "motion-hold", idle && "motion-idle")}
+    >
       {children}
     </div>
   );
