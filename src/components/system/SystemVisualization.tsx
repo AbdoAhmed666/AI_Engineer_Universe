@@ -195,8 +195,16 @@ export function SystemVisualization({
       {children}
 
       {mounted && frame && (
+        /*
+          Not `aria-hidden`: the scene carries the only interactive elements
+          on the band — a button per stage — and focusable content inside a
+          hidden subtree is unreachable by exactly the people the markup is
+          for. The scene marks its own canvas and its decorative labels
+          hidden instead, so what is exposed here is the stage buttons and
+          nothing else. `pointer-events-none` stays, and the buttons opt
+          back in, so the overlay never swallows a click meant for the page.
+        */
         <div
-          aria-hidden="true"
           className={cn(
             "pointer-events-none absolute inset-x-0 opacity-0 transition-opacity duration-500",
             ready && "opacity-100"

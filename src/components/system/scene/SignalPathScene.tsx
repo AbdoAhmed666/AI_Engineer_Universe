@@ -38,7 +38,9 @@
 
 import {
   Fragment,
+  useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -46,7 +48,13 @@ import {
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { getPhaseGroups, type PipelinePhaseId } from "@/lib/pipeline";
+import {
+  getPhaseGroups,
+  pipeline,
+  type PipelinePhaseId,
+  type PipelineStage,
+} from "@/lib/pipeline";
+import { projectNames } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 import {
   getSceneLayout,
@@ -78,6 +86,14 @@ interface ProjectedLabel {
   y: number;
   /** True when the label hangs below its slab rather than sitting above it. */
   below: boolean;
+  /**
+   * The box a pointer has to be inside to inspect this stage, covering the
+   * slab and its label. In canvas percentages, like everything else here —
+   * FOCUS is picked in the DOM rather than by raycasting the scene, so the
+   * renderer never has to run a raycaster on pointer move and the stages
+   * are reachable by keyboard without any extra work.
+   */
+  hit: { left: number; top: number; width: number; height: number };
 }
 
 /**
@@ -412,6 +428,47 @@ function Signal({
 }
 
 /**
+ * FOCUS, in the scene: the inspected stage outlined in the accent.
+ *
+ * A single slab's worth of edges, moved to whichever stage is being looked
+ * at, rather than a second copy of the merged outline set. One draw call,
+ * and only while something is actually focused.
+ */
+function Highlight({
+  node,
+  color,
+}: {
+  node: StageNode | null;
+  color: string;
+}): React.ReactElement | null {
+  const { invalidate } = useThree();
+  const geometry = useMemo(
+    () =>
+      new THREE.EdgesGeometry(
+        new THREE.BoxGeometry(SLAB.width, SLAB.height, SLAB.depth)
+      ),
+    []
+  );
+
+  // FLOW keeps the loop running whenever the band is on screen, so this is
+  // belt and braces — but a focus change has to be drawn even if the loop
+  // happens to be standing down.
+  useEffect(() => invalidate(), [node, invalidate]);
+
+  if (!node) return null;
+
+  return (
+    <lineSegments
+      geometry={geometry}
+      position={[...node.position]}
+      raycast={() => null}
+    >
+      <lineBasicMaterial color={color} />
+    </lineSegments>
+  );
+}
+
+/**
  * The rail: one continuous line through every stage.
  *
  * Built as a `THREE.Line` and mounted through `primitive` because the JSX
@@ -573,6 +630,22 @@ function Framing({
       const [x, y, z] = node.position;
       const below = node.phase === "build";
       const screen = toScreen(x, y + labelOffset(node.phase), z);
+
+      // The hit box is the slab's own drawn footprint together with its
+      // label, so the target is whatever a reader would actually point at.
+      const halfWidth = SLAB.width / 2;
+      const halfDepth = SLAB.depth / 2;
+      const spots = [screen];
+      for (const dx of [-halfWidth, halfWidth]) {
+        for (const dz of [-halfDepth, halfDepth]) {
+          spots.push(toScreen(x + dx, y + SLAB.height / 2, z + dz));
+        }
+      }
+      const xs = spots.map((spot) => spot.x);
+      const ys = spots.map((spot) => spot.y);
+      const left = Math.min(...xs);
+      const top = Math.min(...ys);
+
       return {
         id: node.id,
         label: node.label,
@@ -580,6 +653,12 @@ function Framing({
         x: screen.x,
         y: screen.y,
         below,
+        hit: {
+          left,
+          top,
+          width: Math.max(...xs) - left,
+          height: Math.max(...ys) - top,
+        },
       };
     });
 
@@ -626,10 +705,38 @@ export default function SignalPathScene({
     stages: [],
     phases: [],
   });
+  const [focused, setFocused] = useState<string | null>(null);
+  const panelId = useId();
+
+  const focusedNode = useMemo(
+    () => layout.nodes.find((node) => node.id === focused) ?? null,
+    [layout, focused]
+  );
+  const focusedStage: PipelineStage | undefined = useMemo(
+    () => pipeline.stages.find((stage) => stage.id === focused),
+    [focused]
+  );
+  const focusedLabel = useMemo(
+    () => projection.stages.find((item) => item.id === focused) ?? null,
+    [projection, focused]
+  );
+
+  // Leaving a stage must not clear a different one that has since been
+  // entered — pointer-leave and blur can arrive after the next enter.
+  const release = useCallback(
+    (id: string) => setFocused((current) => (current === id ? null : current)),
+    []
+  );
 
   return (
     <div className="relative h-full w-full">
-      <Canvas
+      {/*
+        The drawing is hidden from assistive technology: it carries no text
+        of its own, and the schematic underneath still holds the full
+        screen-reader description of every stage.
+      */}
+      <div aria-hidden="true" className="absolute inset-0">
+        <Canvas
         orthographic
         camera={{ position: [...CAMERA.position], zoom: 69 }}
         dpr={[1, 1.75]}
@@ -647,7 +754,9 @@ export default function SignalPathScene({
         />
         <Segments points={layout.reach} color={palette.accent} opacity={0.4} />
         <Signal nodes={layout.nodes} color={palette.accent} active={active} />
-      </Canvas>
+        <Highlight node={focusedNode} color={palette.accent} />
+        </Canvas>
+      </div>
 
       {/*
         Labels are DOM, not geometry: crisp at any pixel ratio, coloured by
@@ -677,17 +786,96 @@ export default function SignalPathScene({
           <span
             key={item.id}
             className={cn(
-              "absolute -translate-x-1/2 whitespace-nowrap text-center font-mono leading-tight",
+              "absolute -translate-x-1/2 whitespace-nowrap text-center font-mono leading-tight transition-colors duration-[var(--motion-instant)]",
               !item.below && "-translate-y-full"
             )}
             style={{ left: `${item.x}%`, top: `${item.y}%` }}
           >
             <span className="block text-[10px] text-faint">{item.ordinal}</span>
-            <span className="block text-[13px] text-foreground">
+            <span
+              className={cn(
+                "block text-[13px]",
+                focused === item.id ? "text-accent" : "text-foreground"
+              )}
+            >
               {item.label}
             </span>
           </span>
         ))}
+      </div>
+
+      {/*
+        FOCUS. One button per stage, sized to the slab and its label. These
+        are the scene's only interactive elements and its only exposed ones:
+        a stage is inspectable by pointer and by keyboard, and the panel is
+        wired as each button's description so focusing one announces what it
+        reveals.
+      */}
+      <div
+        className="absolute inset-0"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          setFocused(null);
+          (event.target as HTMLElement).blur();
+        }}
+      >
+        {projection.stages.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-describedby={focused === item.id ? panelId : undefined}
+            className="pointer-events-auto absolute rounded-sm"
+            style={{
+              left: `${item.hit.left}%`,
+              top: `${item.hit.top}%`,
+              width: `${item.hit.width}%`,
+              height: `${item.hit.height}%`,
+            }}
+            onPointerEnter={() => setFocused(item.id)}
+            onPointerLeave={() => release(item.id)}
+            onFocus={() => setFocused(item.id)}
+            onBlur={() => release(item.id)}
+          >
+            <span className="sr-only">
+              {`Inspect stage ${item.ordinal}, ${item.label}`}
+            </span>
+          </button>
+        ))}
+
+        {focusedStage && (
+          <div
+            id={panelId}
+            // Below the drawing rather than inside it: the band is five
+            // times wider than it is tall and every part of it is already
+            // spoken for. Clamped so a stage at either end of the rail does
+            // not push the panel off the side.
+            className="pointer-events-none absolute w-[min(27rem,92%)] -translate-x-1/2 rounded-md border border-line-strong bg-surface p-4"
+            style={{
+              left: `${Math.min(Math.max(focusedLabel?.x ?? 50, 20), 80)}%`,
+              top: "calc(100% + 0.75rem)",
+            }}
+          >
+            <p className="eyebrow text-accent">
+              {focusedLabel?.ordinal}
+              {" · "}
+              {focusedStage.label}
+            </p>
+            <p className="mt-2 text-small text-muted-foreground">
+              {focusedStage.role}
+            </p>
+            <p className="mt-3 font-mono text-[11px] leading-relaxed text-foreground">
+              {focusedStage.technologies.join("  ·  ")}
+            </p>
+            {focusedStage.projects.length > 0 && (
+              <p className="mt-2 text-[11px] text-faint">
+                {"Built in "}
+                {focusedStage.projects
+                  .map((id) => projectNames[id])
+                  .join(", ")}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
