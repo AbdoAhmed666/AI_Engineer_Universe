@@ -5,5 +5,7 @@
 
 export * from "./types";
 export * from "./constants";
+export * from "./projects";
+export * from "./pipeline";
 export * from "./utils";
 export * from "./animations";
