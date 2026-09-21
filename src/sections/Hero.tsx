@@ -112,7 +112,12 @@ export function Hero({ id = "home" }: HeroProps): React.ReactElement {
           */}
           <div className="relative mb-5 aspect-[4/5] w-32 overflow-hidden rounded-lg border border-line">
             <Image
-              src="/me.jpg"
+              /*
+                Prefixed by hand: `basePath` does not reach the `src` of an
+                unoptimized image, and this build is served from a sub-path
+                as well as from a domain root.
+              */
+              src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/me.jpg`}
               alt={siteConfig.author.name}
               fill
               sizes="272px"

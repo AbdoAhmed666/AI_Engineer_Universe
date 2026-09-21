@@ -21,7 +21,27 @@ import type { NextConfig } from "next";
  */
 const isExport = process.env.STATIC_EXPORT === "1";
 
+/**
+ * Sub-path the site is served under, when it is not at a domain root.
+ *
+ * A GitHub Pages project site lives at `/<repo>/`, so every asset URL and
+ * internal link has to carry that prefix or the page loads its HTML and
+ * none of its JavaScript. Empty for a site served at the root.
+ *
+ * Set at build time rather than detected, because the export is a folder of
+ * files that has no idea where it will be mounted.
+ */
+const basePath = process.env.BASE_PATH ?? "";
+
 const nextConfig: NextConfig = {
+  ...(basePath ? { basePath, assetPrefix: basePath } : {}),
+  /*
+   * `basePath` rewrites the framework's own asset URLs, but an unoptimized
+   * `next/image` passes its `src` through untouched — so a file in
+   * `public/` would be requested from the domain root and 404 under a
+   * sub-path. Exposing the prefix lets the one such image prepend it.
+   */
+  env: { NEXT_PUBLIC_BASE_PATH: basePath },
   ...(isExport
     ? {
         output: "export" as const,

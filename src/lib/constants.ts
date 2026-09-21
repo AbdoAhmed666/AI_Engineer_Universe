@@ -12,7 +12,15 @@ export const siteConfig: SiteConfig = {
   title: "Abdelrhman Ahmed — AI Engineer",
   description:
     "AI Engineer building production-grade systems with LLMs, RAG, agents, and machine learning.",
-  url: "https://abdoahmed666.github.io",
+  /*
+   * Where this build of the site will live. Metadata needs an absolute
+   * origin to resolve the share card against, and the same source is
+   * published at more than one address — the domain root, and the
+   * `/my-portfolio/` path the CV has always pointed at — so the deploy
+   * supplies it and the default covers local work.
+   */
+  url:
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://abdoahmed666.github.io",
   author: {
     name: "Abdelrhman Ahmed",
     email: "abdoibrahim122000@gmail.com",
