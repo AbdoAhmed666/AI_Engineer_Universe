@@ -20,7 +20,7 @@ export default function Ask() {
       <SectionHeading
         section="ask"
         title="Ask this site a question."
-        intro="A small retrieval system over this portfolio's own data — the same three project definitions the diagram and the city are drawn from. It answers with the claims it used, and when it finds nothing it says so instead of inventing an answer."
+        intro="A retrieval system over this portfolio's own data — the same three project definitions the diagram and the city are drawn from. It returns the claims themselves, so it has no way to invent one, and when it finds nothing it says so. Scored against real questions, in English and Arabic, and it runs in your browser."
       />
 
       <Reveal>

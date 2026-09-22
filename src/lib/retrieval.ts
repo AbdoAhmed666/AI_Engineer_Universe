@@ -127,6 +127,14 @@ export function hasSearchableTerms(query: string): boolean {
 export interface Hit {
   readonly doc: CorpusDocument;
   readonly score: number;
+  /**
+   * The terms this document was matched on, after expansion.
+   *
+   * Reported rather than discarded because it is the answer to "why this
+   * one?" — and for an Arabic question it is where the alias table becomes
+   * visible: the question said "دوكر" and the match happened on "docker".
+   */
+  readonly matched: readonly string[];
 }
 
 /** BM25 saturation and length-normalisation constants, at their usual values. */
@@ -144,6 +152,15 @@ const STOP = new Set([
   "from", "has", "have", "he", "his", "how", "in", "is", "it", "its", "of",
   "on", "or", "that", "the", "their", "they", "this", "to", "was", "were",
   "what", "which", "who", "with", "you", "your", "i", "me", "my", "can", "any",
+  /*
+   * The "use" family earns its place here by having been watched: asking
+   * "what does he use for retrieval" ranked a claim about accessibility
+   * use cases second, on the strength of the word "use" alone. It carries
+   * no signal in either the question or the corpus, and now that a result
+   * shows what it matched on, a spurious term is visible noise as well as
+   * a worse ranking.
+   */
+  "use", "used", "uses", "using", "there", "about", "into", "over", "also",
 ]);
 
 /**
@@ -215,6 +232,7 @@ export function retrieve(query: string, limit = 5): readonly Hit[] {
   for (let index = 0; index < total; index += 1) {
     const tokens = terms[index];
     let score = 0;
+    const matched: string[] = [];
 
     for (const term of new Set(asked)) {
       const inDoc = tokens.filter((token) => token === term).length;
@@ -228,13 +246,18 @@ export function retrieve(query: string, limit = 5): readonly Hit[] {
         Math.log(1 + (total - containing + 0.5) / (containing + 0.5))
       );
 
-      score +=
+      const contribution =
         idf *
         ((inDoc * (K1 + 1)) /
           (inDoc + K1 * (1 - B + (B * tokens.length) / averageLength)));
+
+      // A term the idf floor zeroed is in nearly every document, so it did
+      // not pick this one out and claiming it did would be noise.
+      if (contribution > 0) matched.push(term);
+      score += contribution;
     }
 
-    if (score > 0) hits.push({ doc: docs[index], score });
+    if (score > 0) hits.push({ doc: docs[index], score, matched });
   }
 
   return hits.sort((a, b) => b.score - a.score).slice(0, limit);

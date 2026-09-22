@@ -45,26 +45,33 @@ the stages it implements. Both read the same two files.
 
 ## Ask it something
 
-The `/ask` section is the same rule applied to text: a question is answered
-only from what the site already claims, and it shows the claims it used.
+The `/ask` section is the same rule applied to text: a question is matched
+against what the site already claims, and what comes back is those claims,
+each linked to where it is made. There is no language model, which is the
+design rather than a compromise — a model would write a nicer paragraph and
+would also be the only thing on this page able to say something the data
+does not support.
 
 The corpus is generated from `projects.ts`, `pipeline.ts` and
 `architecture.ts` — the same three files the diagram and the city are drawn
 from. Nothing is written for it to say. Fifty short documents, so retrieval
-is BM25: lexical, deterministic, local, no key and no vector database. That
-is a measurement rather than a preference — `npm run eval:retrieval` scores
-it against questions a visitor plausibly types, and the command fails on a
-miss.
+is BM25: lexical, deterministic, and small enough to run in the visitor's
+browser. No endpoint, no key, no cost, nothing to rate limit, and it works
+on a static host. The retriever is loaded on first use, so a visitor who
+never asks anything pays nothing for it.
+
+That is a measurement rather than a preference. `npm run eval:retrieval`
+scores it against questions a visitor plausibly types, and the command
+fails on a miss:
 
 ```
 English   hit@1 20/20   hit@3 20/20
 Arabic    hit@1 18/19   hit@3 19/19
 ```
 
-A question the corpus says nothing about never reaches a model: retrieval
-returns empty and the box says so. Every answer also prints the full
-retrieved set, not only the cited claims, because the context an answer had
-to work with is the part a reader can actually check.
+Each result highlights the terms it was matched on, which is also where the
+Arabic handling becomes visible: the question said "دوكر" and the match
+happened on "docker".
 
 Arabic is handled at the query, not in the index. The corpus stays English —
 translating it would mean two sets of claims that can drift — so Arabic words
@@ -72,17 +79,13 @@ are folded to one spelling and mapped onto corpus vocabulary by an alias
 table. A word missing from that table is a gap in the table, not an absence
 in the corpus, and the box says which one it hit.
 
-The endpoint is the only part of the project that needs a server. It is
-dropped from the static export, and the client reads
-`NEXT_PUBLIC_ASK_ENDPOINT`.
-
 ## Engineering constraints
 
 These were treated as design constraints, not afterthoughts.
 
 | | |
 |---|---|
-| **Initial JavaScript** | ~251 KB gzipped. The corpus, the retriever and the Arabic table are server-side only and none of them is in it. `three` is never in it — the 3D chunk (230 KB gz) is fetched only when a device can actually use it. |
+| **Initial JavaScript** | ~251 KB gzipped. Neither of the two heavy things is in it: `three` (230 KB gz) is fetched only when a device can actually use the 3D, and the corpus, the retriever and the Arabic table (6.4 KB gz) only when someone actually asks something. |
 | **The 3D is never required** | The SVG schematic carries every stage and every technology, is server-rendered, and works with no JavaScript. The canvas mounts over it only when the viewport is wide enough, WebGL2 exists, there are cores to spare, the connection is not in data-saver mode, and motion is allowed. Any failure — including a lost GL context — leaves the schematic exactly as it was. |
 | **Accessibility** | A screen-reader list carries all nine stages in full; the 3D never becomes the only source of anything. Stages and buildings are keyboard-operable, and the world is a real modal dialog: focus is trapped, the page behind is `inert`, and focus returns on close. |
 | **One continuous animation** | The travelling signal, and nothing else. It runs the request half of the pipeline only — the build half is indexed once, and the label above it says so. It stops when the band is off screen or the tab is in the background, and is never declared at all under `prefers-reduced-motion`. |
@@ -104,35 +107,10 @@ The 3D scene needs a viewport of 1024px or wider, WebGL2, and system animations
 enabled. Below that you get the schematic — which is the point.
 
 ```bash
-npm run eval:retrieval    # scores retrieval; no key, no network
+npm run eval:retrieval    # scores retrieval; no key, no network, no server
 ```
 
-The ask box needs a key for the generation step. Retrieval does not, which is
-why the eval runs without one:
-
-```bash
-# .env.local
-GROQ_API_KEY=...          # or LLM_API_KEY, with LLM_BASE_URL and LLM_MODEL
-```
-
-Any OpenAI-compatible provider works — the request is the chat-completions
-shape and no vendor SDK is imported.
-
-Providers retire models, and a retired default deploys and serves happily
-until the first real question 500s. If that happens, ask the provider what
-it actually has and set `LLM_MODEL` — there is no code change to make:
-
-```bash
-curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"
-```
-
-```bash
-npm run build                     # server build
-STATIC_EXPORT=1 npm run build     # static export in out/
-```
-
-The share card is generated at build time from the same `pipeline` the page
-draws, so it cannot drift from the site.
+The ask box needs no configuration at all — it is part of the static build.
 
 ## Deployment
 

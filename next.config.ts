@@ -9,11 +9,13 @@ import type { NextConfig } from "next";
  * of HTML, CSS and JS in `out/` with no server behind it, which is what
  * GitHub Pages serves.
  *
- * The export is viable at all only because the site never needed a server:
- * every route already prerenders, there are no route handlers, no cookies,
- * no redirects and no server actions. The single feature that has to give
- * way is image optimization, which needs a running Next.js to resize on
- * demand — so in the export the one image on the page is served as authored.
+ * The export is viable at all only because the site never needs a server:
+ * every route prerenders, there are no route handlers, no cookies, no
+ * redirects and no server actions. The ask box is no exception — it
+ * retrieves in the browser, so the one interactive thing on the page ships
+ * as static files too. The single feature that has to give way is image
+ * optimization, which needs a running Next.js to resize on demand — so in
+ * the export the one image on the page is served as authored.
  *
  * Gated rather than always on, because `output: "export"` makes `next start`
  * an error, and breaking the local workflow to satisfy the deploy would be
@@ -35,16 +37,6 @@ const basePath = process.env.BASE_PATH ?? "";
 
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
-  /*
-   * The ask endpoint is the one thing here that needs a server, and a
-   * static export cannot carry it — a route handler that reads a request
-   * body fails the export outright. Excluded from that build; the exported
-   * site calls whichever deployment does serve it, through
-   * NEXT_PUBLIC_ASK_ENDPOINT.
-   */
-  ...(isExport
-    ? { pageExtensions: ["tsx", "mdx"] }
-    : {}),
   /*
    * `basePath` rewrites the framework's own asset URLs, but an unoptimized
    * `next/image` passes its `src` through untouched — so a file in
