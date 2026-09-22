@@ -1,68 +1,8 @@
 import { SectionContainer, SectionHeading } from "@/components/common";
 import { Reveal } from "@/components/motion";
-import { projectNames, type ProjectId } from "@/lib/projects";
+import { projectDetails, projectNames } from "@/lib/projects";
 
-const projects: {
-  id: ProjectId;
-  tag: string;
-  description: string;
-  capabilities: string[];
-  tech: string[];
-  github: string;
-}[] = [
-  {
-    id: "ai-interview-agent",
-    tag: "Full-Stack AI Application",
-    description:
-      "Production-grade AI technical interview platform using LLMs and RAG. Generates role-specific adaptive questions, evaluates answers with structured LLM scoring, and produces personalized feedback with hiring recommendations.",
-    capabilities: [
-      "Role-specific adaptive interview questions via LLMs",
-      "LLM evaluation pipeline: scoring, feedback, knowledge-gap detection",
-      "RAG pipeline with FAISS for context-aware personalization",
-      "JWT authentication, session management, interview history",
-      "Analytics dashboard and PDF report generation",
-      "FastAPI backend + Next.js frontend, PostgreSQL persistence",
-    ],
-    tech: ["FastAPI", "Next.js", "PostgreSQL", "LangChain", "FAISS", "OpenAI", "Docker", "TypeScript"],
-    github: "https://github.com/AbdoAhmed666/AI-Interview-Agent",
-  },
-  {
-    id: "ai-internal-knowledge-assistant",
-    tag: "RAG · LLM Infrastructure",
-    description:
-      "Internal knowledge assistant using RAG, embeddings, and FAISS retrieval to generate context-aware responses from a domain knowledge base. Optimized for CPU inference through INT8 quantization — reducing model size by 58.9% (293MB → 120MB).",
-    capabilities: [
-      "Modular RAG architecture: retrieval, generation, application layers",
-      "FAISS vector retrieval with embedding-based semantic search",
-      "FastAPI REST and streaming endpoints",
-      "INT8 quantization: 58.9% model size reduction",
-      "Docker-based deployment with documented latency trade-offs",
-      "Tool-calling architecture with modular LLM orchestration",
-    ],
-    tech: ["Python", "FastAPI", "FAISS", "LangChain", "Docker", "Quantization", "REST API"],
-    github: "https://github.com/AbdoAhmed666/electro-pi-ai-internal-knowledge-assistant",
-  },
-  {
-    id: "gesture-smart-home",
-    tag: "Graduation Project · Deep Learning · IoT",
-    description:
-      "Real-time gesture recognition system using a Bidirectional LSTM and wearable IMU sensors for accessibility-focused smart-home control. End to end: an ESP32 streams six-axis motion over WebSocket, a trained model classifies it, and a live client shows the result. Achieved 98% recognition accuracy with 35% latency reduction.",
-    capabilities: [
-      "98% gesture recognition accuracy with BiLSTM + IMU sensors",
-      "35% inference latency reduction through model optimization",
-      "ESP32 bridge streaming six-axis IMU data over WebSocket, with IP registration and auto-reconnect",
-      "300,000-sample motion dataset: median-filter cleaning, standard-scaler normalization, feature extraction",
-      "Two model families for fixed and animated gestures: Keras LSTM and Random Forest, with their own encoders and scalers",
-      "WebSocket inference service with Firebase Realtime Database and prediction logging",
-      "React client showing live prediction and confidence",
-      "Real-time smart-home control for accessibility use cases",
-      "Dockerised, deployed on Railway and Azure via GitHub Actions",
-      "Led 5-member development team through full project lifecycle",
-    ],
-    tech: ["BiLSTM", "TensorFlow", "Keras", "ESP32", "WebSocket", "FastAPI", "Firebase", "React", "Docker", "Azure", "Railway", "Python"],
-    github: "https://github.com/AbdoAhmed666",
-  },
-];
+
 
 export default function Projects() {
   return (
@@ -70,7 +10,7 @@ export default function Projects() {
       <SectionHeading section="projects" title="Featured Projects" />
 
       <div className="flex flex-col gap-6">
-        {projects.map((project) => (
+        {projectDetails.map((project) => (
           <Reveal key={project.id}>
             <article className="rounded-xl border border-line bg-surface p-6 sm:p-10">
               <div className="grid gap-10 lg:grid-cols-[1fr_280px]">
