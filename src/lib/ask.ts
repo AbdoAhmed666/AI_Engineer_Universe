@@ -71,7 +71,17 @@ export function getProvider(): Provider {
     baseUrl:
       process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1",
     apiKey,
-    model: process.env.LLM_MODEL ?? "llama-3.3-70b-versatile",
+    /*
+     * Groq retires models, and a retired default is a deployment that
+     * builds, serves and then answers every real question with a 500 —
+     * which is exactly how this one was found. `llama-3.3-70b-versatile`
+     * was the default and no longer exists there at all.
+     *
+     * Checked against the provider's own model list rather than
+     * remembered. If this 404s again, that is what happened again: list
+     * the models and set LLM_MODEL, no code change needed.
+     */
+    model: process.env.LLM_MODEL ?? "openai/gpt-oss-120b",
   };
 }
 

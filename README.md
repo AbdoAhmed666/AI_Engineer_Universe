@@ -118,6 +118,14 @@ GROQ_API_KEY=...          # or LLM_API_KEY, with LLM_BASE_URL and LLM_MODEL
 Any OpenAI-compatible provider works — the request is the chat-completions
 shape and no vendor SDK is imported.
 
+Providers retire models, and a retired default deploys and serves happily
+until the first real question 500s. If that happens, ask the provider what
+it actually has and set `LLM_MODEL` — there is no code change to make:
+
+```bash
+curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"
+```
+
 ```bash
 npm run build                     # server build
 STATIC_EXPORT=1 npm run build     # static export in out/
