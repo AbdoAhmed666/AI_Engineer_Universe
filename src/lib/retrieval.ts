@@ -26,6 +26,61 @@
 
 import { getCorpus, type CorpusDocument } from "./corpus";
 
+/**
+ * Query expansion.
+ *
+ * The eval found the only class of question this retriever fails: one
+ * whose words appear nowhere in the corpus. "Making models smaller or
+ * faster" is quantization; "what hardware" is an ESP32. A dense pass is
+ * the usual fix, but it needs a model at query time, and the corpus
+ * vocabulary here is small, closed and changes only when a project does —
+ * so the failing bridges can simply be written down.
+ *
+ * This is honest about what it is: not semantics, a dictionary. Each entry
+ * exists because a real question missed, and `npm run eval:retrieval`
+ * fails if one stops working. If this list ever starts growing with every
+ * new question, that is the signal the closed-vocabulary assumption has
+ * broken and embeddings have earned their place.
+ *
+ * Expansion only adds terms; it never removes what was typed.
+ */
+const ALIASES: ReadonlyMap<string, readonly string[]> = new Map([
+  ["smaller", ["quantization", "int8", "size", "reduction"]],
+  ["faster", ["latency", "optimization", "inference"]],
+  ["speed", ["latency", "optimization"]],
+  ["optimize", ["quantization", "latency", "optimization"]],
+  ["compress", ["quantization", "int8"]],
+  ["hardware", ["esp32", "imu", "sensors", "iot", "wearable"]],
+  ["device", ["esp32", "imu", "sensors", "iot"]],
+  ["board", ["esp32"]],
+  ["embedded", ["esp32", "imu", "iot"]],
+  ["container", ["docker"]],
+  ["containers", ["docker"]],
+  ["deployment", ["docker", "railway", "azure", "deployed"]],
+  ["database", ["postgresql", "faiss", "firebase", "index"]],
+  ["vector", ["faiss", "embeddings", "index"]],
+  ["auth", ["jwt", "authentication"]],
+  ["login", ["jwt", "authentication", "session"]],
+  ["frontend", ["next.js", "react", "client", "interface"]],
+  ["backend", ["fastapi", "service", "rest", "api"]],
+  ["testing", ["evaluation", "scoring"]],
+  ["evaluate", ["evaluation", "scoring", "feedback"]],
+  ["team", ["led", "5-member", "lifecycle"]],
+  ["lead", ["led", "5-member", "team"]],
+  ["study", ["graduation", "project"]],
+  ["university", ["graduation"]],
+]);
+
+/** Adds corpus vocabulary implied by the question, keeping the original. */
+function expand(tokens: readonly string[]): string[] {
+  const out = [...tokens];
+  for (const token of tokens) {
+    const extra = ALIASES.get(token);
+    if (extra) out.push(...extra);
+  }
+  return out;
+}
+
 /** A document and how well it matched. */
 export interface Hit {
   readonly doc: CorpusDocument;
@@ -98,7 +153,7 @@ function getIndex(): Index {
  */
 export function retrieve(query: string, limit = 5): readonly Hit[] {
   const { docs, terms, frequency, averageLength } = getIndex();
-  const asked = tokenize(query);
+  const asked = expand(tokenize(query));
   if (asked.length === 0) return [];
 
   const total = docs.length;

@@ -36,6 +36,16 @@ const basePath = process.env.BASE_PATH ?? "";
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   /*
+   * The ask endpoint is the one thing here that needs a server, and a
+   * static export cannot carry it — a route handler that reads a request
+   * body fails the export outright. Excluded from that build; the exported
+   * site calls whichever deployment does serve it, through
+   * NEXT_PUBLIC_ASK_ENDPOINT.
+   */
+  ...(isExport
+    ? { pageExtensions: ["tsx", "mdx"] }
+    : {}),
+  /*
    * `basePath` rewrites the framework's own asset URLs, but an unoptimized
    * `next/image` passes its `src` through untouched — so a file in
    * `public/` would be requested from the domain root and 404 under a

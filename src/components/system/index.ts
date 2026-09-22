@@ -15,5 +15,8 @@ export type { SystemSchematicProps } from "./SystemSchematic";
 export { SystemVisualization } from "./SystemVisualization";
 export type { SystemVisualizationProps } from "./SystemVisualization";
 
+export { AskBox } from "./AskBox";
+export type { AskBoxProps } from "./AskBox";
+
 export { WorldOverlay } from "./WorldOverlay";
 export type { WorldOverlayProps } from "./WorldOverlay";
