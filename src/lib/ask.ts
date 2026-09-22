@@ -12,6 +12,7 @@
  * vendor SDK.
  */
 
+import { hasArabic } from "./arabic";
 import { hasSearchableTerms, retrieve, type Hit } from "./retrieval";
 
 /** What the caller gets back. */
@@ -36,7 +37,8 @@ Rules, in order of importance:
 2. If the claims do not answer the question, say so plainly in one sentence. Never guess, never fill a gap with what is typical for an AI engineer, and never soften a "no" into a maybe.
 3. Cite the claims you used as [1], [2] inline.
 4. Two or three sentences. No preamble, no "based on the provided context", no bullet lists.
-5. Write in the third person: "He built…", not "I built…".`;
+5. Write in the third person: "He built…", not "I built…".
+6. Answer in the language the question is written in. The claims are always in English; if the question is in Arabic, answer in Arabic and keep the technical terms in English — FAISS, FastAPI, Docker — because that is how engineers write them. Rules 1 and 2 do not relax for any language.`;
 
 /** Formats the retrieved claims the way the prompt refers to them. */
 function asContext(hits: readonly Hit[]): string {
@@ -84,12 +86,19 @@ export async function ask(
   question: string,
   signal?: AbortSignal
 ): Promise<Answer> {
-  // A question in another script retrieves nothing for a different reason
-  // than a question the site cannot answer, and telling the visitor the
-  // wrong one is the only kind of lie this whole design exists to avoid.
+  const arabic = hasArabic(question);
+
+  // A question whose words never reached the index retrieves nothing for a
+  // different reason than a question the site cannot answer, and telling
+  // the visitor the wrong one is the only kind of lie this whole design
+  // exists to avoid. Arabic reaches the English index through an alias
+  // table, so a word missing from it lands here — that is a gap in the
+  // table, not an absence in the corpus, and it says so.
   if (!hasSearchableTerms(question)) {
     return {
-      text: "The index behind this box is English, so a question written in another script matches nothing at all. Ask in English — or keep the technical term in English, and it will still find it.",
+      text: arabic
+        ? "مفيش كلمة في السؤال ده يعرف يدوّر بيها — الفهرس نفسه إنجليزي، والعربي بيوصله عن طريق قائمة كلمات، ويبان إن دي مش فيها. سيب المصطلح التقني بالإنجليزي (زي «هو يعرف Docker؟») وهيلاقيه."
+        : "Nothing in that question reached the index, which is English. Ask in English — or keep the technical term in English, and it will still find it.",
       sources: [],
       declined: true,
     };
@@ -101,7 +110,9 @@ export async function ask(
   // than asked of the model, because it is cheaper, faster and certain.
   if (hits.length === 0) {
     return {
-      text: "This site doesn't document anything about that. Everything here is drawn from three projects — the AI Interview Agent, the AI Internal Knowledge Assistant, and a real-time gesture smart-home system.",
+      text: arabic
+        ? "الموقع ده مفيهوش أي كلام عن ده. كل اللي هنا مبني على تلات مشاريع — الـ AI Interview Agent، والـ AI Internal Knowledge Assistant، ونظام تحكّم في البيت بالإيماءات في الوقت الحقيقي."
+        : "This site doesn't document anything about that. Everything here is drawn from three projects — the AI Interview Agent, the AI Internal Knowledge Assistant, and a real-time gesture smart-home system.",
       sources: [],
       declined: true,
     };

@@ -65,6 +65,8 @@ const SUGGESTIONS = [
   "What does he use for retrieval, and why?",
   "How is the gesture system actually deployed?",
   "Does he know Kubernetes?",
+  // Arabic is supported and nobody would guess it, so one opener says so.
+  "إيه مشروع التخرج بتاعه؟",
 ] as const;
 
 /**
@@ -301,6 +303,7 @@ export function AskBox({ className }: AskBoxProps): React.ReactElement {
                   inputRef.current?.focus();
                   void submit(suggestion);
                 }}
+                dir="auto"
                 className="rounded-full border border-line px-3 py-1.5 text-small text-muted-foreground transition-colors duration-200 hover:border-line-strong hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 {suggestion}
@@ -319,7 +322,8 @@ export function AskBox({ className }: AskBoxProps): React.ReactElement {
 
         {status === "answered" && answer && (
           <div className="rounded-lg border border-line bg-surface p-6">
-            <p className="text-body text-foreground">
+            {/* An Arabic answer has to lay itself out right-to-left. */}
+            <p dir="auto" className="text-body text-foreground">
               {withCitations(answer.text, answer.sources, listId)}
             </p>
 
@@ -353,7 +357,19 @@ export function AskBox({ className }: AskBoxProps): React.ReactElement {
                         >
                           {index + 1}
                         </span>
-                        <span className={used ? "" : "opacity-55"}>
+                        {/*
+                          * Clamped: a project overview is a full paragraph,
+                          * and six of them would bury the answer they are
+                          * meant to support. The whole claim is in the
+                          * title, and the link goes to it on the page.
+                          */}
+                        <span
+                          title={source.text}
+                          className={cn(
+                            "line-clamp-3",
+                            !used && "opacity-55"
+                          )}
+                        >
                           <a
                             href={source.href}
                             className="text-foreground underline decoration-line underline-offset-4 transition-colors duration-200 hover:decoration-accent"

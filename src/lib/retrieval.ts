@@ -24,6 +24,13 @@
  * const hits = retrieve("does he know Docker?", 4);
  */
 
+import {
+  ARABIC_ALIASES,
+  ARABIC_STOP,
+  ARABIC_WORD,
+  hasArabic,
+  normalizeArabic,
+} from "./arabic";
 import { getCorpus, type CorpusDocument } from "./corpus";
 
 /**
@@ -85,7 +92,7 @@ const ALIASES: ReadonlyMap<string, readonly string[]> = new Map([
 function expand(tokens: readonly string[]): string[] {
   const out = [...tokens];
   for (const token of tokens) {
-    const extra = ALIASES.get(token);
+    const extra = ALIASES.get(token) ?? ARABIC_ALIASES.get(token);
     if (extra) out.push(...extra);
     if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
       out.push(token.slice(0, -1));
@@ -94,16 +101,26 @@ function expand(tokens: readonly string[]): string[] {
   return out;
 }
 
+/** Terms that could possibly match the index, which is English. */
+function searchable(tokens: readonly string[]): string[] {
+  return tokens.filter((token) => !hasArabic(token));
+}
+
 /**
- * Whether a question contains anything this retriever can match on.
+ * Whether a question leaves anything this retriever can match on.
  *
- * The index is English and lexical, so a question written entirely in
- * another script tokenizes to nothing and retrieves nothing. That is not
- * the same as the site having no answer, and saying it is would be a lie —
- * so the two cases are told apart here rather than collapsed.
+ * The index is English and lexical. An English question always leaves
+ * terms; an Arabic one leaves them only where its words are in the alias
+ * table, and a question in a script nothing knows leaves none at all.
+ *
+ * Retrieving nothing because the site makes no such claim, and retrieving
+ * nothing because the question never reached the index, are different
+ * facts, and reporting the first when the second happened is the one kind
+ * of lie this whole design exists to prevent. So they are told apart here
+ * rather than collapsed.
  */
 export function hasSearchableTerms(query: string): boolean {
-  return tokenize(query).length > 0;
+  return searchable(expand(tokenize(query))).length > 0;
 }
 
 /** A document and how well it matched. */
@@ -129,13 +146,22 @@ const STOP = new Set([
   "what", "which", "who", "with", "you", "your", "i", "me", "my", "can", "any",
 ]);
 
-/** Lower-cases, splits on anything that is not a word character, drops noise. */
+/**
+ * Lower-cases, splits on anything that is not a word character, drops noise.
+ *
+ * Arabic letters count as word characters and are folded to one spelling,
+ * so a question typed either way produces the same token to look up.
+ */
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .split(/[^a-z0-9+#.]+/)
+    .split(new RegExp(`[^a-z0-9+#.${ARABIC_WORD}]+`))
     .map((token) => token.replace(/^\.+|\.+$/g, ""))
-    .filter((token) => token.length > 1 && !STOP.has(token));
+    .map((token) => (hasArabic(token) ? normalizeArabic(token) : token))
+    .filter(
+      (token) =>
+        token.length > 1 && !STOP.has(token) && !ARABIC_STOP.has(token)
+    );
 }
 
 /** The corpus, tokenized once and reused. */
@@ -178,7 +204,9 @@ function getIndex(): Index {
  */
 export function retrieve(query: string, limit = 5): readonly Hit[] {
   const { docs, terms, frequency, averageLength } = getIndex();
-  const asked = expand(tokenize(query));
+  // Arabic tokens can never match an English index; only what the alias
+  // table produced from them can, so they are dropped before scoring.
+  const asked = searchable(expand(tokenize(query)));
   if (asked.length === 0) return [];
 
   const total = docs.length;
