@@ -9,6 +9,11 @@
  * Deliberately not exported statically — see `next.config.ts`, which drops
  * this route from the export build. The client then calls whichever
  * deployment does serve it, via NEXT_PUBLIC_ASK_ENDPOINT.
+ *
+ * Which means this is normally called cross-origin: the page is on GitHub
+ * Pages and the endpoint is not, so it answers CORS preflight and echoes an
+ * allowed origin. Allowed, not open — an endpoint that spends a key on
+ * anyone's page is a bill waiting to happen.
  */
 
 import { NextResponse } from "next/server";
@@ -17,6 +22,47 @@ import { ask, MAX_QUESTION } from "@/lib/ask";
 export const runtime = "nodejs";
 /** Never cached: the key lives here and every request is a fresh question. */
 export const dynamic = "force-dynamic";
+
+/**
+ * Origins allowed to call this.
+ *
+ * The published site and local development by default; `ASK_ALLOWED_ORIGINS`
+ * (comma-separated) replaces the list when the site moves. A request with no
+ * Origin header — curl, a health check — is not a browser and is left alone;
+ * the rate limit is what bounds those.
+ */
+const ALLOWED_ORIGINS: readonly string[] = (
+  process.env.ASK_ALLOWED_ORIGINS ??
+  "https://abdoahmed666.github.io,http://localhost:3000"
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+/**
+ * CORS headers for one request.
+ *
+ * `Vary: Origin` is not decoration: without it a CDN can hand one origin's
+ * allow-header to another and the endpoint either breaks or leaks.
+ */
+function cors(request: Request): Record<string, string> {
+  const origin = request.headers.get("origin");
+  const headers: Record<string, string> = { vary: "Origin" };
+
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers["access-control-allow-origin"] = origin;
+    headers["access-control-allow-methods"] = "POST, OPTIONS";
+    headers["access-control-allow-headers"] = "content-type";
+    headers["access-control-max-age"] = "86400";
+  }
+
+  return headers;
+}
+
+/** Preflight. Browsers send this before the POST whenever it is cross-origin. */
+export function OPTIONS(request: Request): NextResponse {
+  return new NextResponse(null, { status: 204, headers: cors(request) });
+}
 
 /** Requests allowed per address, and over what window. */
 const LIMIT = { requests: 8, windowMs: 60_000 } as const;
@@ -54,6 +100,33 @@ function rateLimited(address: string): boolean {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const response = await answer(request);
+
+  // Attached in one place rather than at each return: a 429 or a 500 that
+  // silently lacks them reads in the browser as a network failure, and the
+  // next return added below would have to remember on its own.
+  for (const [key, value] of Object.entries(cors(request))) {
+    response.headers.set(key, value);
+  }
+
+  return response;
+}
+
+/** The request itself: validate, rate limit, answer. */
+async function answer(request: Request): Promise<NextResponse> {
+  // CORS only makes the browser throw the response away — the work is
+  // already done and the key already spent by then. An Origin this endpoint
+  // does not serve is refused before any of that. It stops another page
+  // embedding this box on someone else's bill; a script sending no Origin
+  // at all is a different problem, and the rate limit is what bounds it.
+  const origin = request.headers.get("origin");
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+    return NextResponse.json(
+      { error: "This endpoint does not answer for that origin." },
+      { status: 403 }
+    );
+  }
+
   const address =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     request.headers.get("x-real-ip") ??
