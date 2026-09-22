@@ -235,6 +235,8 @@ export function AskBox({ className }: AskBoxProps): React.ReactElement {
             ref={inputRef}
             id={inputId}
             type="text"
+            // Arabic typed here should lay out right-to-left; English left.
+            dir="auto"
             value={question}
             maxLength={MAX_QUESTION}
             disabled={pending}

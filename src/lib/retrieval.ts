@@ -58,6 +58,8 @@ const ALIASES: ReadonlyMap<string, readonly string[]> = new Map([
   ["containers", ["docker"]],
   ["deployment", ["docker", "railway", "azure", "deployed"]],
   ["database", ["postgresql", "faiss", "firebase", "index"]],
+  ["postgres", ["postgresql"]],
+  ["sql", ["postgresql"]],
   ["vector", ["faiss", "embeddings", "index"]],
   ["auth", ["jwt", "authentication"]],
   ["login", ["jwt", "authentication", "session"]],
@@ -71,14 +73,37 @@ const ALIASES: ReadonlyMap<string, readonly string[]> = new Map([
   ["university", ["graduation"]],
 ]);
 
-/** Adds corpus vocabulary implied by the question, keeping the original. */
+/**
+ * Adds corpus vocabulary implied by the question, keeping the original.
+ *
+ * Also adds the singular of any plural, because "what projects are there"
+ * found nothing while "project" is in almost every document. Naive on
+ * purpose — dropping a final "s" is wrong for a few English words and
+ * right for the ones in a technical corpus, and a spurious term that
+ * matches no document costs nothing, since scoring ignores it.
+ */
 function expand(tokens: readonly string[]): string[] {
   const out = [...tokens];
   for (const token of tokens) {
     const extra = ALIASES.get(token);
     if (extra) out.push(...extra);
+    if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
+      out.push(token.slice(0, -1));
+    }
   }
   return out;
+}
+
+/**
+ * Whether a question contains anything this retriever can match on.
+ *
+ * The index is English and lexical, so a question written entirely in
+ * another script tokenizes to nothing and retrieves nothing. That is not
+ * the same as the site having no answer, and saying it is would be a lie —
+ * so the two cases are told apart here rather than collapsed.
+ */
+export function hasSearchableTerms(query: string): boolean {
+  return tokenize(query).length > 0;
 }
 
 /** A document and how well it matched. */

@@ -12,7 +12,7 @@
  * vendor SDK.
  */
 
-import { retrieve, type Hit } from "./retrieval";
+import { hasSearchableTerms, retrieve, type Hit } from "./retrieval";
 
 /** What the caller gets back. */
 export interface Answer {
@@ -84,6 +84,17 @@ export async function ask(
   question: string,
   signal?: AbortSignal
 ): Promise<Answer> {
+  // A question in another script retrieves nothing for a different reason
+  // than a question the site cannot answer, and telling the visitor the
+  // wrong one is the only kind of lie this whole design exists to avoid.
+  if (!hasSearchableTerms(question)) {
+    return {
+      text: "The index behind this box is English, so a question written in another script matches nothing at all. Ask in English — or keep the technical term in English, and it will still find it.",
+      sources: [],
+      declined: true,
+    };
+  }
+
   const hits = retrieve(question, CONTEXT_SIZE);
 
   // Nothing matched: the site makes no claim about this. Said here rather
