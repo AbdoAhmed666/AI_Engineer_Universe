@@ -40,6 +40,25 @@ const ALLOWED_ORIGINS: readonly string[] = (
   .filter(Boolean);
 
 /**
+ * Whether this request's Origin may be answered.
+ *
+ * The deployment serving this route also serves a copy of the site, and a
+ * browser sends Origin on a same-origin POST too — so a host is always
+ * allowed to answer its own page, whatever the configured list says.
+ * Without this the endpoint refuses the site it is part of, which is the
+ * first thing anyone opens after deploying it.
+ */
+function allows(request: Request, origin: string): boolean {
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+
+  const host = request.headers.get("host");
+  if (!host) return false;
+
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0] ?? "https";
+  return origin === `${proto}://${host}`;
+}
+
+/**
  * CORS headers for one request.
  *
  * `Vary: Origin` is not decoration: without it a CDN can hand one origin's
@@ -49,7 +68,7 @@ function cors(request: Request): Record<string, string> {
   const origin = request.headers.get("origin");
   const headers: Record<string, string> = { vary: "Origin" };
 
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  if (origin && allows(request, origin)) {
     headers["access-control-allow-origin"] = origin;
     headers["access-control-allow-methods"] = "POST, OPTIONS";
     headers["access-control-allow-headers"] = "content-type";
@@ -120,7 +139,7 @@ async function answer(request: Request): Promise<NextResponse> {
   // embedding this box on someone else's bill; a script sending no Origin
   // at all is a different problem, and the rate limit is what bounds it.
   const origin = request.headers.get("origin");
-  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+  if (origin && !allows(request, origin)) {
     return NextResponse.json(
       { error: "This endpoint does not answer for that origin." },
       { status: 403 }
